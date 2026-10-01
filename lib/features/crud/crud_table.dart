@@ -5,7 +5,8 @@ import '../../core/theme/cursar_palette.dart';
 import '../../core/theme/tone.dart';
 import 'crud_spec.dart';
 
-/// Tabla del CRUD: header fijo arriba y scroll vertical en el cuerpo.
+/// Tabla del CRUD: header fijo arriba, scroll vertical en el cuerpo y barra
+/// de scroll horizontal al pie.
 ///
 /// Reemplaza al `<table>` con `thead { position: sticky }` del CSS. El ancho
 /// de cada columna viene de [ColumnSpec.width]; si la suma no entra, la tabla
@@ -13,6 +14,11 @@ import 'crud_spec.dart';
 /// horizontales separados —un [ScrollController] no puede atender varias
 /// posiciones a la vez— y el offset del cuerpo se copia al header para que las
 /// columnas nunca se desalineen.
+///
+/// La barra horizontal comparte el controller del cuerpo ([_bodyHorizontal]),
+/// que está adjunto a un único scroll, así que no dispara el assert de
+/// "múltiples ScrollPosition". Va fuera del `Expanded` del scroll vertical a
+/// propósito: si viviera adentro, se iría con las filas.
 class CrudTable extends StatefulWidget {
   const CrudTable({
     super.key,
@@ -90,6 +96,11 @@ class _CrudTableState extends State<CrudTable> {
               ? constraints.maxWidth
               : natural;
 
+          // La barra horizontal solo se dibuja si la tabla realmente es más
+          // ancha que el viewport. En Tags o Test vocacional, que entran
+          // justos, una barra inmóvil sería ruido.
+          final needsHorizontalScroll = natural > constraints.maxWidth;
+
           return Column(
             children: [
               // Header fijo, con scroll horizontal compartido.
@@ -164,6 +175,23 @@ class _CrudTableState extends State<CrudTable> {
                   ),
                 ),
               ),
+              // Barra horizontal, fija al pie de la tabla. Comparte
+              // `_bodyHorizontal`, así que arrastrarla mueve el cuerpo y, por
+              // el listener, también el header.
+              if (needsHorizontalScroll) ...[
+                Divider(height: 1, color: p.borderSubtle),
+                Scrollbar(
+                  controller: _bodyHorizontal,
+                  thumbVisibility: true,
+                  // Sin esto la barra no se puede arrastrar con el mouse, que
+                  // en web es la mitad de la razón de existir.
+                  interactive: true,
+                  // El ancho explícito no es decorativo: dentro de una
+                  // `Column` un `SizedBox` sin width colapsa a 0 px y la barra
+                  // deja de recibir los drags del mouse.
+                  child: const SizedBox(height: 12, width: double.infinity),
+                ),
+              ],
             ],
           );
         },
