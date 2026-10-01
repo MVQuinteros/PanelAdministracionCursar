@@ -1,0 +1,13 @@
+# LF en el repositorio para todo lo textual. Así el checkout en Windows y el de
+# ubuntu-latest dan exactamente el mismo archivo, y `flutter analyze` no ve
+# diferencias de finales de línea entre el código local y el de Actions.
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+*.png binary

@@ -1,0 +1,46 @@
+name: cursar_admin_flutter
+description: "CURSAR · Panel de administración web. Gestión de usuarios, ofertas, instituciones, tags, avisos, soporte y test vocacional."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase — mismas versiones que la app móvil CURSAR (proyecto_app) para
+  # compartir la misma base Firestore y la misma Authentication.
+  firebase_core: ^4.9.0
+  firebase_auth: ^6.5.1
+  cloud_firestore: ^6.4.1
+
+  # Estado declarativo.
+  flutter_riverpod: ^3.0.0
+
+  # Navegación con URLs por hash (igual que el router original, no requiere
+  # rewrites en el hosting estático).
+  go_router: ^16.0.0
+
+  # Gráficos del dashboard (reemplaza Chart.js).
+  fl_chart: ^1.0.0
+
+  # Fechas en es-AR.
+  intl: ^0.20.2
+
+  # Persistencia de la preferencia de tema (el original usaba localStorage).
+  shared_preferences: ^2.3.0
+
+  # Interoperabilidad con el DOM para la descarga del CSV (Blob + <a download>).
+  web: ^1.1.0
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
