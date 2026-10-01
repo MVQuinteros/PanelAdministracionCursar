@@ -1,0 +1,64 @@
+name: Deploy a GitHub Pages
+
+# Solo desde main: es el deploy a producción.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# GitHub no permite dos deploys concurrentes al mismo sitio.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      # Los tests de layout corren acá y no en un job aparte a propósito: si
+      # alguno falla, el build no llega a existiry no se publica nada roto.
+      - name: Analizar
+        run: flutter analyze --no-pub
+
+      - name: Tests
+        run: flutter test --no-pub
+
+      # El `--base-href` tiene que ser el subpath donde se publica, que en Pages
+      # es el nombre del repo RESPETANDO mayúsculas. Se arma con la variable del
+      # evento para no dejarlo escrito a mano (que es como se rompe: minúsculas
+      # donde va camelCase dan 404 al pedir main.dart.js).
+      - name: Build web
+        run: |
+          flutter build web \
+            --release \
+            --base-href "/${{ github.event.repository.name }}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
