@@ -460,22 +460,13 @@ class BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: p.accent,
-        borderRadius: BorderRadius.circular(size * 0.25),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        'C',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: size * 0.53,
-          fontWeight: FontWeight.w800,
-        ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.25),
+      child: Image.asset(
+        'assets/logoCursar.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
       ),
     );
   }
