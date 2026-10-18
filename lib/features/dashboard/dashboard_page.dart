@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -387,8 +389,50 @@ class _Doughnut extends StatefulWidget {
 }
 
 class _DoughnutState extends State<_Doughnut> {
+  /// Geometría del doughnut. Debe coincidir con la config de [PieChart] para que
+  /// el hit-test propio mapee igual que el dibujo (ver `_updateHover`).
+  static const double _centerSpaceRadius = 46;
+  static const double _sectionRadius = 26;
+
   /// Índice del segmento bajo el cursor; `null` cuando no hay ninguno.
   int? _touchedIndex;
+
+  /// Detecta el segmento bajo el cursor replicando la geometría de fl_chart
+  /// (`PieChartPainter.handleTouch`): las secciones arrancan en 0° (las 3 en
+  /// punto), avanzan en sentido horario y forman un anillo entre
+  /// [_centerSpaceRadius] y [_centerSpaceRadius] + [_sectionRadius].
+  ///
+  /// Se hace a mano en vez de con `pieTouchData` porque su `touchCallback`
+  /// rompe el render en Flutter Web (CanvasKit) y dejaba la tarjeta en gris.
+  void _updateHover(
+    Offset local,
+    Size size,
+    List<MapEntry<String, int>> entries,
+  ) {
+    final total = entries.fold<int>(0, (sum, e) => sum + e.value);
+    final center = Offset(size.width / 2, size.height / 2);
+    final d = local - center;
+    final r = math.sqrt(d.dx * d.dx + d.dy * d.dy);
+
+    int? hit;
+    // Solo cuenta el anillo: ni el hueco central ni el exterior.
+    if (total > 0 &&
+        r >= _centerSpaceRadius &&
+        r <= _centerSpaceRadius + _sectionRadius) {
+      var angle = math.atan2(d.dy, d.dx) * 180 / math.pi;
+      if (angle < 0) angle += 360;
+      var acc = 0.0;
+      for (var i = 0; i < entries.length; i++) {
+        final sweep = 360 * entries[i].value / total;
+        if (angle >= acc && angle < acc + sweep) {
+          hit = i;
+          break;
+        }
+        acc += sweep;
+      }
+    }
+    if (hit != _touchedIndex) setState(() => _touchedIndex = hit);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -400,58 +444,92 @@ class _DoughnutState extends State<_Doughnut> {
     final total = entries.fold<int>(0, (sum, e) => sum + e.value);
     final showTooltip = _touchedIndex != null && _touchedIndex! < entries.length;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Expanded(
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: PieChart(
-              PieChartData(
-                sectionsSpace: 2,
-                centerSpaceRadius: 46,
-                borderData: FlBorderData(show: false),
-                sections: [
-                  for (var i = 0; i < entries.length; i++)
-                    PieChartSectionData(
-                      value: entries[i].value.toDouble(),
-                      color: palette[i % palette.length],
-                      radius: 26,
-                      showTitle: false,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // En pantallas angostas la leyenda lateral se achica para dejarle lugar
+        // al redondel.
+        final legendWidth = constraints.maxWidth >= 480 ? 150.0 : 116.0;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, chartConstraints) {
+                        final size = chartConstraints.biggest;
+                        return MouseRegion(
+                          cursor: _touchedIndex != null
+                              ? SystemMouseCursors.click
+                              : MouseCursor.defer,
+                          onExit: (_) {
+                            if (_touchedIndex != null) {
+                              setState(() => _touchedIndex = null);
+                            }
+                          },
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerHover: (e) =>
+                                _updateHover(e.localPosition, size, entries),
+                            onPointerDown: (e) =>
+                                _updateHover(e.localPosition, size, entries),
+                            child: PieChart(
+                              PieChartData(
+                                sectionsSpace: 2,
+                                centerSpaceRadius: _centerSpaceRadius,
+                                borderData: FlBorderData(show: false),
+                                sections: [
+                                  for (var i = 0; i < entries.length; i++)
+                                    PieChartSectionData(
+                                      value: entries[i].value.toDouble(),
+                                      color: palette[i % palette.length],
+                                      radius: _sectionRadius,
+                                      showTitle: false,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
+                  ),
+                  if (showTooltip) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _DoughnutInfo(
+                        swatch: palette[_touchedIndex! % palette.length],
+                        title:
+                            '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
+                        value: entries[_touchedIndex!].value,
+                        total: total,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-          ),
-        ),
-        if (showTooltip) ...[
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: _DoughnutInfo(
-              swatch: palette[_touchedIndex! % palette.length],
-              title: '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
-              value: entries[_touchedIndex!].value,
-              total: total,
+            const SizedBox(width: 12),
+            // Leyenda vertical a la derecha: color + nombre, uno por fila.
+            SizedBox(
+              width: legendWidth,
+              child: SingleChildScrollView(
+                child: _LegendRight(
+                  labels: <String>[for (final e in entries) e.key],
+                  colors: <Color>[
+                    for (var i = 0; i < entries.length; i++)
+                      palette[i % palette.length],
+                  ],
+                  textColor: p.textSecondary,
+                ),
+              ),
             ),
-          ),
-        ],
-        // Leyenda inferior, equivalente a `legend: {position: 'bottom'}`.
-        // `Flexible` + scroll: el alto del tile lo fija el `GridView`, así que
-        // con muchas categorías la leyenda se scrollea en vez de desbordar.
-        Flexible(
-          child: SingleChildScrollView(
-            child: _LegendBottom(
-              labels: <String>[for (final e in entries) e.key],
-              colors: <Color>[
-                for (var i = 0; i < entries.length; i++)
-                  palette[i % palette.length],
-              ],
-              textColor: p.textSecondary,
-            ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -651,9 +729,11 @@ class _Bar extends StatelessWidget {
   }
 }
 
-/// Leyenda horizontal con wrap, como la de Chart.js en `position: 'bottom'`.
-class _LegendBottom extends StatelessWidget {
-  const _LegendBottom({
+/// Leyenda vertical que acompaña al redondel (a su derecha): un ítem por fila
+/// con el color y el nombre. El texto envuelve dentro de un ancho fijo, así que
+/// no se encima aunque los nombres sean largos.
+class _LegendRight extends StatelessWidget {
+  const _LegendRight({
     required this.labels,
     required this.colors,
     required this.textColor,
@@ -665,37 +745,40 @@ class _LegendBottom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 12,
-          runSpacing: 6,
-          children: [
-            for (var i = 0; i < labels.length; i++)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: colors[i],
-                      borderRadius: BorderRadius.circular(2),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < labels.length; i++)
+          Padding(
+            padding: EdgeInsets.only(bottom: i == labels.length - 1 ? 0 : 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(top: 3),
+                  decoration: BoxDecoration(
+                    color: colors[i],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    labels[i],
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: AppTokens.sm,
+                      height: 1.25,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    labels[i],
-                    style: TextStyle(color: textColor, fontSize: AppTokens.sm),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
