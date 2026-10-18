@@ -390,18 +390,6 @@ class _DoughnutState extends State<_Doughnut> {
   /// Índice del segmento bajo el cursor; `null` cuando no hay ninguno.
   int? _touchedIndex;
 
-  void _onTouch(FlTouchEvent event, PieTouchResponse? response) {
-    final section = response?.touchedSection;
-    // Salir del gráfico o no caer sobre un segmento → se oculta el tooltip.
-    if (event is FlPointerExitEvent || section == null) {
-      if (_touchedIndex != null) setState(() => _touchedIndex = null);
-      return;
-    }
-    final index = section.touchedSectionIndex;
-    if (index == _touchedIndex) return;
-    setState(() => _touchedIndex = index);
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -423,9 +411,6 @@ class _DoughnutState extends State<_Doughnut> {
                 sectionsSpace: 2,
                 centerSpaceRadius: 46,
                 borderData: FlBorderData(show: false),
-                pieTouchData: PieTouchData(
-                  touchCallback: _onTouch,
-                ),
                 sections: [
                   for (var i = 0; i < entries.length; i++)
                     PieChartSectionData(
