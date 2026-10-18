@@ -315,6 +315,7 @@ class _Charts extends StatelessWidget {
               chart: _Doughnut(
                 counts: testAreas,
                 palette: DashboardPage.chartColors,
+                categoryLabel: 'Área de interés',
               ),
             ),
           ],
@@ -368,43 +369,128 @@ class _ChartBox extends StatelessWidget {
   }
 }
 
-class _Doughnut extends StatelessWidget {
-  const _Doughnut({required this.counts, required this.palette});
+class _Doughnut extends StatefulWidget {
+  const _Doughnut({
+    required this.counts,
+    required this.palette,
+    this.categoryLabel = 'Área',
+  });
 
   final Map<String, int> counts;
   final List<Color> palette;
 
+  /// Nombre del criterio que encabeza el tooltip ("Área", "Área de interés").
+  final String categoryLabel;
+
+  @override
+  State<_Doughnut> createState() => _DoughnutState();
+}
+
+class _DoughnutState extends State<_Doughnut> {
+  /// Índice del segmento bajo el cursor; `null` cuando no hay ninguno.
+  int? _touchedIndex;
+
+  /// Posición local del cursor dentro del gráfico (para el tooltip flotante).
+  Offset _touchLocation = Offset.zero;
+
+  void _onTouch(FlTouchEvent event, PieTouchResponse? response) {
+    final section = response?.touchedSection;
+    // Salir del gráfico o no caer sobre un segmento → se oculta el tooltip.
+    if (event is FlPointerExitEvent || section == null) {
+      if (_touchedIndex != null) setState(() => _touchedIndex = null);
+      return;
+    }
+    final index = section.touchedSectionIndex;
+    final location = response!.touchLocation;
+    // Sin cambios relevantes no se reconstruye.
+    if (index == _touchedIndex && location == _touchLocation) return;
+    setState(() {
+      _touchedIndex = index;
+      _touchLocation = location;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final entries = counts.entries.toList();
-    if (entries.isEmpty) return _Empty('Sin datos para graficar');
+    final entries = widget.counts.entries.toList();
+    if (entries.isEmpty) return const _Empty('Sin datos para graficar');
+
+    final palette = widget.palette;
+    final total = entries.fold<int>(0, (sum, e) => sum + e.value);
+    final showTooltip = _touchedIndex != null && _touchedIndex! < entries.length;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // `LayoutBuilder`: el tooltip se posiciona relativo al cursor pero
+        // recortado a los bordes del área del gráfico.
         Expanded(
-          child: PieChart(
-            PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: 46,
-              borderData: FlBorderData(show: false),
-              sections: [
-                for (var i = 0; i < entries.length; i++)
-                  PieChartSectionData(
-                    value: entries[i].value.toDouble(),
-                    color: palette[i % palette.length],
-                    radius: 26,
-                    showTitle: entries.length <= 8,
-                    title: '${entries[i].key}\n${entries[i].value}',
-                    titleStyle: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              double? left;
+              double? top;
+              if (showTooltip) {
+                const gap = 14.0;
+                left = _touchLocation.dx + gap;
+                top = _touchLocation.dy + gap;
+                if (left + _PieTooltip.width > constraints.maxWidth) {
+                  left = _touchLocation.dx - gap - _PieTooltip.width;
+                }
+                if (top + _PieTooltip.height > constraints.maxHeight) {
+                  top = _touchLocation.dy - gap - _PieTooltip.height;
+                }
+                final maxX = constraints.maxWidth - _PieTooltip.width;
+                final maxY = constraints.maxHeight - _PieTooltip.height;
+                left = maxX <= 0 ? 0.0 : left.clamp(0.0, maxX).toDouble();
+                top = maxY <= 0 ? 0.0 : top.clamp(0.0, maxY).toDouble();
+              }
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 46,
+                        borderData: FlBorderData(show: false),
+                        pieTouchData: PieTouchData(
+                          touchCallback: _onTouch,
+                          // Cursor de "manito" sobre los segmentos en web.
+                          mouseCursorResolver: (_, response) =>
+                              response?.touchedSection != null
+                                  ? SystemMouseCursors.click
+                                  : MouseCursor.defer,
+                        ),
+                        sections: [
+                          for (var i = 0; i < entries.length; i++)
+                            PieChartSectionData(
+                              value: entries[i].value.toDouble(),
+                              color: palette[i % palette.length],
+                              radius: 26,
+                              // Sin texto dentro del segmento: con varias
+                              // categorías se encimaba. El detalle se ve en el
+                              // tooltip al pasar el cursor y en la leyenda.
+                              showTitle: false,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-              ],
-            ),
+                  if (showTooltip)
+                    _PieTooltip(
+                      left: left!,
+                      top: top!,
+                      swatch: palette[_touchedIndex! % palette.length],
+                      title:
+                          '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
+                      value: entries[_touchedIndex!].value,
+                      total: total,
+                    ),
+                ],
+              );
+            },
           ),
         ),
         // Leyenda inferior, equivalente a `legend: {position: 'bottom'}`.
@@ -423,6 +509,108 @@ class _Doughnut extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Tooltip flotante del gráfico circular (fl_chart no trae uno nativo para
+/// pie): nombre de la categoría, cantidad y porcentaje real del total.
+class _PieTooltip extends StatelessWidget {
+  const _PieTooltip({
+    required this.left,
+    required this.top,
+    required this.swatch,
+    required this.title,
+    required this.value,
+    required this.total,
+  });
+
+  final double left;
+  final double top;
+  final Color swatch;
+  final String title;
+  final int value;
+  final int total;
+
+  /// Tamaños fijos: permiten calcular la posición dentro del gráfico.
+  static const double width = 158;
+  static const double height = 74;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final fg = p.bgMain; // texto claro sobre fondo `textPrimary`
+    final pct = total <= 0 ? 0.0 : value * 100 / total;
+    final pctText =
+        '${pct.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '')}%';
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      child: Container(
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.textPrimary, // fondo contrastante en ambos temas
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: swatch, width: 1.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x40000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: swatch,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Cantidad: $value',
+              style: TextStyle(color: fg, fontSize: 11, height: 1.2),
+            ),
+            Text(
+              'Porcentaje: $pctText',
+              style: TextStyle(
+                color: fg,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -485,11 +673,38 @@ class _Bar extends StatelessWidget {
           ),
         ),
         barTouchData: BarTouchData(
+          // Cursor de "manito" sobre las barras en web/escritorio.
+          mouseCursorResolver: (_, response) => response?.spot != null
+              ? SystemMouseCursors.click
+              : MouseCursor.defer,
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => p.bgElevated,
+            // Fondo contrastante (inverso del tema) y borde acorde a la UI.
+            getTooltipColor: (_) => p.textPrimary,
+            tooltipBorderRadius: BorderRadius.circular(8),
+            tooltipBorder: BorderSide(color: p.borderSubtle),
+            maxContentWidth: 180,
+            // Evita que el tooltip se recorte en los bordes del gráfico.
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
             getTooltipItem: (group, _, rod, _) => BarTooltipItem(
-              '${labels[group.x]}\n${rod.toY.round()}',
-              TextStyle(color: p.textPrimary, fontSize: AppTokens.sm),
+              labels[group.x],
+              TextStyle(
+                color: p.bgMain,
+                fontSize: AppTokens.sm,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+              children: [
+                TextSpan(
+                  text: '\nCantidad: ${rod.toY.round()}',
+                  style: TextStyle(
+                    color: p.bgMain,
+                    fontSize: AppTokens.xs,
+                    fontWeight: FontWeight.w400,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
