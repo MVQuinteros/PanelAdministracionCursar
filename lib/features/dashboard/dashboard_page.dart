@@ -416,40 +416,39 @@ class _DoughnutState extends State<_Doughnut> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Expanded(
-          child: PieChart(
-            PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: 46,
-              borderData: FlBorderData(show: false),
-              pieTouchData: PieTouchData(
-                touchCallback: _onTouch,
-                // Cursor de "manito" sobre los segmentos en web.
-                mouseCursorResolver: (_, response) =>
-                    response?.touchedSection != null
-                        ? SystemMouseCursors.click
-                        : MouseCursor.defer,
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: PieChart(
+              PieChartData(
+                sectionsSpace: 2,
+                centerSpaceRadius: 46,
+                borderData: FlBorderData(show: false),
+                pieTouchData: PieTouchData(
+                  touchCallback: _onTouch,
+                ),
+                sections: [
+                  for (var i = 0; i < entries.length; i++)
+                    PieChartSectionData(
+                      value: entries[i].value.toDouble(),
+                      color: palette[i % palette.length],
+                      radius: 26,
+                      showTitle: false,
+                    ),
+                ],
               ),
-              sections: [
-                for (var i = 0; i < entries.length; i++)
-                  PieChartSectionData(
-                    value: entries[i].value.toDouble(),
-                    color: palette[i % palette.length],
-                    radius: 26,
-                    // Sin texto dentro del segmento: con varias categorías
-                    // se encimaba. El detalle se ve en el tooltip y leyenda.
-                    showTitle: false,
-                  ),
-              ],
             ),
           ),
         ),
         if (showTooltip) ...[
-          const SizedBox(height: 8),
-          _DoughnutInfo(
-            swatch: palette[_touchedIndex! % palette.length],
-            title: '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
-            value: entries[_touchedIndex!].value,
-            total: total,
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: _DoughnutInfo(
+              swatch: palette[_touchedIndex! % palette.length],
+              title: '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
+              value: entries[_touchedIndex!].value,
+              total: total,
+            ),
           ),
         ],
         // Leyenda inferior, equivalente a `legend: {position: 'bottom'}`.
