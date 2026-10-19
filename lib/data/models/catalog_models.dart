@@ -189,7 +189,48 @@ class SoporteModel {
         .collection(collection)
         .orderBy('createdAt', descending: true)
         .get();
-    return snap.docs.map((d) => <String, Object?>{'id': d.id, ...d.data()}).toList();
+    final rows = snap.docs
+        .map((d) => <String, Object?>{'id': d.id, ...d.data()})
+        .toList();
+    return _attachUsuarios(rows);
+  }
+
+  /// Completa el `email` del reporte con `usuarios/{userUid}` cuando el
+  /// mensaje viene sin él (la app puede escribir solo el uid).
+  ///
+  /// Mismo join tolerante a fallos que [TestResultadoModel.list]: si no se
+  /// pueden leer los usuarios, los reportes quedan como vinieron.
+  Future<List<Doc>> _attachUsuarios(List<Doc> rows) async {
+    final faltaEmail = rows.any((r) {
+      final uid = r['userUid'];
+      return uid is String &&
+          uid.isNotEmpty &&
+          '${r['email'] ?? ''}'.trim().isEmpty;
+    });
+    if (!faltaEmail) return rows;
+
+    List<Doc> usuarios = const [];
+    try {
+      usuarios = await UsuarioModel().list();
+    } catch (_) {
+      // Sin permiso para leer usuarios: se muestran los datos crudos.
+      return rows;
+    }
+
+    final porUid = <String, Doc>{
+      for (final u in usuarios)
+        if (u['id'] is String) u['id']! as String: u,
+    };
+    for (final row in rows) {
+      final uid = row['userUid'];
+      if (uid is! String) continue;
+      if ('${row['email'] ?? ''}'.trim().isNotEmpty) continue;
+      final user = porUid[uid];
+      if (user == null) continue;
+      final email = '${user['email'] ?? ''}';
+      if (email.trim().isNotEmpty) row['email'] = email;
+    }
+    return rows;
   }
 
   Future<void> setEstado(String id, String estado) =>

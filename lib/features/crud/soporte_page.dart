@@ -1,14 +1,19 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/cursar_palette.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/badge.dart';
-import '../../data/models/model_providers.dart';
+import '../../data/models/model_providers.dart' hide Doc;
 import 'crud_page.dart';
 import 'crud_spec.dart';
 import 'crud_widgets.dart';
 
-/// Módulo Soporte: los reportes los crea la app móvil, el admin solo cambia
-/// el estado (resolver / reabrir) o los borra.
+/// Módulo Soporte: los reportes los crea la app móvil; el admin los lee, les
+/// responde (el texto queda en `respuesta`, para que lo vea el usuario),
+/// cambia el estado (resolver / reabrir) o los borra.
 class SoportePage extends StatelessWidget {
   const SoportePage({super.key});
 
@@ -59,6 +64,27 @@ class SoportePage extends StatelessWidget {
         csv: (row) => Fmt.display(row['mensaje']),
       ),
       ColumnSpec(
+        key: 'respuesta',
+        label: 'Respuesta',
+        width: 220,
+        cell: (context, row) {
+          final respuesta = Fmt.display(row['respuesta']);
+          if (respuesta.isEmpty) return const MutedText('Sin respuesta');
+          return Row(
+            children: [
+              Icon(
+                Icons.check_circle_outline,
+                size: 14,
+                color: context.palette.success,
+              ),
+              const SizedBox(width: 6),
+              Expanded(child: TruncatedText(respuesta)),
+            ],
+          );
+        },
+        csv: (row) => Fmt.display(row['respuesta']),
+      ),
+      ColumnSpec(
         key: 'createdAt',
         label: 'Recibido',
         width: 150,
@@ -75,7 +101,37 @@ class SoportePage extends StatelessWidget {
         csv: (row) => '${row['estado'] ?? 'nuevo'}',
       ),
     ],
-    rowActions: const <RowActionSpec>[
+    rowActions: <RowActionSpec>[
+      // Responder: el prompt trae el detalle del reporte y deja escribir la
+      // respuesta que verá el usuario en la app.
+      RowActionSpec(
+        action: 'responder',
+        label: 'Responder',
+        tone: Tone.primary,
+        icon: Icons.reply_outlined,
+        title: 'Responder reporte',
+        prompt: RowPromptSpec(
+          title: 'Responder reporte',
+          field: 'respuesta',
+          label: 'Respuesta para el usuario',
+          hint: 'Se muestra en la app, junto al reporte que envió el usuario.',
+          rows: 5,
+          submitLabel: 'Enviar respuesta',
+          doneMessage: 'Respuesta enviada al usuario.',
+          detail: (context, row) => _ReporteDetalle(row: row),
+          toggle: const RowPromptToggle(
+            field: 'estado',
+            label: 'Marcar como resuelto',
+            onValue: 'resuelto',
+            offValue: 'nuevo',
+          ),
+          extraPatch: () => <String, Object?>{
+            'respondidoEn': FieldValue.serverTimestamp(),
+            'respondidoPor':
+                FirebaseAuth.instance.currentUser?.email ?? 'Admin',
+          },
+        ),
+      ),
       RowActionSpec(
         action: 'resolver',
         label: 'Resolver',
@@ -113,5 +169,107 @@ class SoportePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CrudPage(spec: spec);
+  }
+}
+
+/// Detalle del reporte dentro del diálogo de respuesta.
+///
+/// En la tabla el mensaje se ve truncado; acá se muestra entero, con quién lo
+/// envió y cuándo, para poder contestar sin adivinar.
+class _ReporteDetalle extends StatelessWidget {
+  const _ReporteDetalle({required this.row});
+
+  final Doc row;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final mensaje = Fmt.display(row['mensaje']);
+    final email = Fmt.display(row['email']);
+    final uid = Fmt.display(row['userUid']);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.bgElevated,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: p.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              StatusBadge('${row['tipo'] ?? 'General'}', tone: Tone.neutral),
+              const SizedBox(width: 8),
+              Expanded(
+                child: MutedText('Recibido ${Fmt.dateTime(row['createdAt'])}'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _DetailRow(label: 'De', value: email.isEmpty ? '—' : email),
+          if (uid.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _DetailRow(label: 'Usuario', value: uid),
+          ],
+          const SizedBox(height: 12),
+          Text(
+            'MENSAJE',
+            style: TextStyle(
+              fontSize: AppTokens.xs,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: p.textMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            mensaje.isEmpty ? '—' : mensaje,
+            style: TextStyle(
+              color: p.textPrimary,
+              fontSize: AppTokens.md,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila etiqueta/valor del detalle del reporte.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: AppTokens.xs, color: p.textMuted),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: AppTokens.sm,
+              fontWeight: FontWeight.w600,
+              color: p.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -191,6 +191,7 @@ class RowActionSpec {
     this.visible,
     this.patch,
     this.doneMessage,
+    this.prompt,
   });
 
   final String action;
@@ -208,6 +209,83 @@ class RowActionSpec {
 
   /// Toast de confirmación. Si es null, la acción no avisa.
   final String? doneMessage;
+
+  /// Si está presente, la acción abre un diálogo con un campo de texto en vez
+  /// de aplicar el [patch] directamente. El texto ingresado y el [patch] se
+  /// escriben juntos.
+  final RowPromptSpec? prompt;
+}
+
+/// Diálogo con un campo de texto que acompaña a una [RowActionSpec].
+///
+/// En lugar de un `patch` fijo, la acción pide una intervención del usuario
+/// ("Responder reporte"): lo que se tipea se guarda en [field] y se suma a lo
+/// que ya declare la acción en `RowActionSpec.patch`.
+class RowPromptSpec {
+  const RowPromptSpec({
+    required this.title,
+    required this.field,
+    this.label = 'Respuesta',
+    this.hint,
+    this.rows = 4,
+    this.detail,
+    this.toggle,
+    this.extraPatch,
+    this.submitLabel = 'Guardar',
+    this.doneMessage,
+    this.required = true,
+  });
+
+  /// Título del diálogo.
+  final String title;
+
+  /// Clave del patch donde se escribe el texto ingresado.
+  final String field;
+
+  /// Rótulo del campo de texto.
+  final String label;
+  final String? hint;
+
+  /// Alto base del `TextField` multilinea.
+  final int rows;
+
+  /// Encabezado con el detalle de la fila (mensaje completo, fechas, …).
+  final Widget Function(BuildContext context, Doc row)? detail;
+
+  /// Checkbox opcional que también escribe en el patch (ej. "marcar como
+  /// resuelto" → `estado: 'resuelto' | 'nuevo'`).
+  final RowPromptToggle? toggle;
+
+  /// Campos extra calculados al momento de confirmar (timestamps, autor, …).
+  final Map<String, Object?> Function()? extraPatch;
+
+  /// Texto del botón de envío.
+  final String submitLabel;
+
+  /// Toast de éxito. Si es null, la acción no avisa.
+  final String? doneMessage;
+
+  /// Si es true, no se puede confirmar sin escribir nada.
+  final bool required;
+}
+
+/// Checkbox opcional de un [RowPromptSpec].
+class RowPromptToggle {
+  const RowPromptToggle({
+    required this.field,
+    required this.label,
+    required this.onValue,
+    required this.offValue,
+    this.defaultValue = true,
+  });
+
+  final String field;
+  final String label;
+
+  /// Valor de [field] con el checkbox marcado / desmarcado.
+  final Object? onValue;
+  final Object? offValue;
+  final bool defaultValue;
 }
 
 /// Estado interno de un módulo: carga, filtros activos y datos.

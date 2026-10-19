@@ -10,6 +10,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/toast.dart';
 import 'crud_form_dialog.dart';
 import 'crud_models.dart';
+import 'crud_prompt_dialog.dart';
 import 'crud_spec.dart';
 import 'crud_table.dart';
 import 'crud_toolbar.dart';
@@ -137,10 +138,42 @@ class _CrudPageState extends ConsumerState<CrudPage> {
     final spec = widget.spec.rowActions
         .where((a) => a.action == action)
         .firstOrNull;
-    final patch = spec?.patch;
-    if (patch == null) return;
-    if (!mounted) return;
+    if (spec == null) return;
 
+    // Acción con prompt: el texto lo escribe el usuario en un diálogo antes de
+    // grabar (ej. "Responder reporte"). El diálogo se queda abierto si falla.
+    final prompt = spec.prompt;
+    if (prompt != null) {
+      if (!mounted) return;
+      await showRowPrompt(
+        context,
+        prompt: prompt,
+        row: row,
+        onSubmit: (promptPatch) {
+          return _savePatch(
+            row,
+            <String, Object?>{...?spec.patch, ...promptPatch},
+            doneMessage: prompt.doneMessage ?? spec.doneMessage,
+          );
+        },
+      );
+      return;
+    }
+
+    final patch = spec.patch;
+    if (patch == null) return;
+    await _savePatch(row, patch, doneMessage: spec.doneMessage);
+  }
+
+  /// Escribe [patch] sobre la fila y recarga el módulo.
+  ///
+  /// Devuelve `false` si no se pudo grabar, para que un diálogo que invocó a
+  /// esta función se quede abierto con lo que el usuario escribió.
+  Future<bool> _savePatch(
+    Doc row,
+    Map<String, Object?> patch, {
+    String? doneMessage,
+  }) async {
     final id = row['id']! as String;
     try {
       await crudWritableOf(widget.spec.title).save(id, patch);
@@ -152,14 +185,13 @@ class _CrudPageState extends ConsumerState<CrudPage> {
           kind: ToastKind.error,
         );
       }
-      return;
+      return false;
     }
-    final message = spec?.doneMessage;
-    if (message != null && mounted) {
-      toast(context, message, kind: ToastKind.success);
+    if (doneMessage != null && mounted) {
+      toast(context, doneMessage, kind: ToastKind.success);
     }
-    if (!mounted) return;
-    await _c.load();
+    if (mounted) await _c.load();
+    return true;
   }
 
   Future<void> _openForm(Doc? row) async {
