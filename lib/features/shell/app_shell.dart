@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/build_info.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/cursar_palette.dart';
 import '../../core/theme/theme_controller.dart';
@@ -268,14 +267,6 @@ class _Sidebar extends StatelessWidget {
                   block: true,
                   onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
                 ),
-              ),
-              const SizedBox(height: 10),
-              // Sello del build: si alguna vez "no se ve el cambio", este hash
-              // dice de un vistazo qué versión está sirviendo el navegador.
-              Text(
-                buildLabel,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: p.textMuted, fontSize: AppTokens.xs),
               ),
             ],
           ),
