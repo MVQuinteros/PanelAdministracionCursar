@@ -178,18 +178,52 @@ class _CrudTableState extends State<CrudTable> {
               // Barra horizontal, fija al pie de la tabla. Comparte
               // `_bodyHorizontal`, así que arrastrarla mueve el cuerpo y, por
               // el listener, también el header.
+              //
+              // El texto no es decorativo: cuando la tabla no entra, las
+              // columnas de la derecha (incluida Acciones, con Responder /
+              // Editar / Eliminar) quedan fuera de la pantalla, y la barra
+              // sola pasaba desapercibida.
               if (needsHorizontalScroll) ...[
                 Divider(height: 1, color: p.borderSubtle),
-                Scrollbar(
-                  controller: _bodyHorizontal,
-                  thumbVisibility: true,
-                  // Sin esto la barra no se puede arrastrar con el mouse, que
-                  // en web es la mitad de la razón de existir.
-                  interactive: true,
-                  // El ancho explícito no es decorativo: dentro de una
-                  // `Column` un `SizedBox` sin width colapsa a 0 px y la barra
-                  // deja de recibir los drags del mouse.
-                  child: const SizedBox(height: 12, width: double.infinity),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 15,
+                        color: p.textMuted,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Hay más columnas a la derecha: arrastrá la tabla',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTokens.xs,
+                            color: p.textMuted,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // El ancho explícito no es decorativo: dentro de una
+                      // `Row` un `SizedBox` sin width colapsa a 0 px y la barra
+                      // deja de recibir los drags del mouse.
+                      SizedBox(
+                        width: 220,
+                        child: Scrollbar(
+                          controller: _bodyHorizontal,
+                          thumbVisibility: true,
+                          // Sin esto la barra no se puede arrastrar con el
+                          // mouse, que en web es la mitad de la razón de
+                          // existir.
+                          interactive: true,
+                          child: const SizedBox(height: 12),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],

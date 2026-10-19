@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -52,6 +53,7 @@ class CursarAdminApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'CURSAR · Panel de administración',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const _PanelScrollBehavior(),
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
@@ -72,4 +74,26 @@ class CursarAdminApp extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Arrastre de los scrollables con el mouse, para las tablas anchas.
+///
+/// Flutter deja `PointerDeviceKind.mouse` afuera de `dragDevices` por defecto:
+/// en escritorio los scrollables se mueven con la rueda y con la barra. En el
+/// panel eso no alcanza, porque varias tablas son más anchas que la pantalla
+/// (Soporte pide ~1480 px y en un monitor de 1440 entran ~1144) y la columna de
+/// Acciones —donde viven "Responder", "Editar", etc.— queda fuera de la vista.
+/// Sin arrastre, la única forma de llegar era la barra horizontal del pie, que
+/// es finita y pasa desapercibida.
+class _PanelScrollBehavior extends MaterialScrollBehavior {
+  const _PanelScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => <PointerDeviceKind>{
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.invertedStylus,
+      };
 }
