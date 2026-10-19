@@ -138,11 +138,11 @@ class _Sidebar extends StatelessWidget {
           child: Row(
             children: [
               ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   child: Image.asset(
                     'assets/logoCursar.png',
-                    width: 52,
-                    height: 52,
+                    width: 58,
+                    height: 58,
                     fit: BoxFit.cover,
                   ),
                 ),
