@@ -506,10 +506,8 @@ class _DoughnutState extends State<_Doughnut> {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Izquierda: el redondel, a altura completa y sin recortes.
-            Expanded(child: chart),
-            const SizedBox(width: 12),
-            // Derecha: info del segmento (slot de alto fijo) + leyenda vertical.
+            // Izquierda: info del segmento (slot de alto fijo) + leyenda
+            // vertical.
             SizedBox(
               width: sideWidth,
               child: Column(
@@ -550,7 +548,7 @@ class _DoughnutState extends State<_Doughnut> {
                         thumbVisibility: true,
                         child: SingleChildScrollView(
                           controller: _legendScroll,
-                          child: _LegendRight(
+                          child: _LegendColumn(
                             labels: <String>[for (final e in entries) e.key],
                             colors: <Color>[
                               for (var i = 0; i < entries.length; i++)
@@ -565,6 +563,9 @@ class _DoughnutState extends State<_Doughnut> {
                 ],
               ),
             ),
+            const SizedBox(width: 12),
+            // Derecha: el redondel, a altura completa y sin recortes.
+            Expanded(child: chart),
           ],
         );
       },
@@ -767,11 +768,11 @@ class _Bar extends StatelessWidget {
   }
 }
 
-/// Leyenda vertical que acompaña al redondel (a su derecha): un ítem por fila
+/// Leyenda vertical que acompaña al redondel (a su izquierda): un ítem por fila
 /// con el color y el nombre. El texto envuelve dentro de un ancho fijo, así que
 /// no se encima aunque los nombres sean largos.
-class _LegendRight extends StatelessWidget {
-  const _LegendRight({
+class _LegendColumn extends StatelessWidget {
+  const _LegendColumn({
     required this.labels,
     required this.colors,
     required this.textColor,
