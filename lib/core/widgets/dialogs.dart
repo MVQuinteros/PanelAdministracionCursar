@@ -71,6 +71,7 @@ Future<T?> showAppModal<T>({
   bool danger = false,
   Future<void> Function(BuildContext context)? onSubmit,
   double maxWidth = 620,
+  Widget? footerLeading,
 }) {
   return showDialog<T>(
     context: context,
@@ -137,6 +138,8 @@ Future<T?> showAppModal<T>({
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      // Acción secundaria del diálogo (ej. "Enviar por mail").
+                      ?footerLeading,
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),
                         child: Text(

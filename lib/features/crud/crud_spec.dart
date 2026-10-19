@@ -231,6 +231,8 @@ class RowPromptSpec {
     this.detail,
     this.toggle,
     this.extraPatch,
+    this.afterSave,
+    this.mail,
     this.submitLabel = 'Guardar',
     this.doneMessage,
     this.required = true,
@@ -259,6 +261,20 @@ class RowPromptSpec {
   /// Campos extra calculados al momento de confirmar (timestamps, autor, …).
   final Map<String, Object?> Function()? extraPatch;
 
+  /// Se ejecuta después de que el patch se guardó con éxito.
+  ///
+  /// Sirve para efectos posteriores a la escritura (ej.: dejar una
+  /// notificación en la app avisando que ya hay respuesta). Si falla, la
+  /// respuesta igual quedó guardada: el diálogo se cierra y avisa por toast.
+  final Future<void> Function(
+    BuildContext context,
+    Doc row,
+    Map<String, Object?> patch,
+  )? afterSave;
+
+  /// Botón "Enviar por mail" del footer del diálogo.
+  final RowPromptMail? mail;
+
   /// Texto del botón de envío.
   final String submitLabel;
 
@@ -286,6 +302,32 @@ class RowPromptToggle {
   final Object? onValue;
   final Object? offValue;
   final bool defaultValue;
+}
+
+/// Botón "Enviar por mail" de un [RowPromptSpec].
+///
+/// Abre el cliente de correo del admin con destinatario, asunto y cuerpo ya
+/// cargados: el envío lo confirma el admin. Así la respuesta también le llega
+/// por mail al usuario, sin backend ni servicios externos.
+class RowPromptMail {
+  const RowPromptMail({
+    required this.to,
+    required this.subject,
+    required this.buildBody,
+    this.label = 'Enviar por mail',
+  });
+
+  /// Destinatario. Si devuelve vacío, el botón queda deshabilitado.
+  final String Function(Doc row) to;
+
+  /// Asunto del mail.
+  final String Function(Doc row) subject;
+
+  /// Cuerpo del mail; [text] es lo que se escribió en el campo del prompt.
+  final String Function(Doc row, String text) buildBody;
+
+  /// Texto del botón.
+  final String label;
 }
 
 /// Estado interno de un módulo: carga, filtros activos y datos.

@@ -248,6 +248,22 @@ class SoporteModel {
   }
 }
 
+/// Colección `notificaciones` (avisos personales de cada usuario).
+///
+/// Las escribe el panel al responder un reporte de soporte; la app las lee
+/// filtrando por `userUid`. `soporteId` viaja para poder abrir el ticket desde
+/// la notificación.
+class NotificacionModel {
+  static const collection = 'notificaciones';
+
+  Future<String> add(Map<String, Object?> data) async {
+    final ref = await FirebaseFirestore.instance
+        .collection(collection)
+        .add(data);
+    return ref.id;
+  }
+}
+
 /// Resultados del test vocacional.
 ///
 /// Viven en `testVocacional/data/resultados` y los escribe la app móvil.

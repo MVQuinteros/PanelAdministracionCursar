@@ -10,8 +10,9 @@ import 'support/layout_harness.dart';
 /// Tests del diálogo de las acciones con prompt (`RowActionSpec.prompt`).
 ///
 /// `showRowPrompt` no toca Firestore: arma el patch y lo entrega por callback,
-/// así que acá se cubre lo que importa (detalle, precarga, validación, toggle
-/// y cierre condicional) sin dobles ni inicializar Firebase.
+/// así que acá se cubre lo que importa (detalle, precarga, validación, toggle,
+/// cierre condicional, `afterSave` y el botón de mail) sin dobles ni
+/// inicializar Firebase.
 void main() {
   late List<String> layoutErrors;
 
@@ -34,6 +35,8 @@ void main() {
   RowPromptSpec prompt({
     RowPromptToggle? toggle,
     Map<String, Object?> Function()? extraPatch,
+    Future<void> Function(BuildContext, Doc, Map<String, Object?>)? afterSave,
+    RowPromptMail? mail,
     bool required = true,
   }) {
     return RowPromptSpec(
@@ -48,6 +51,8 @@ void main() {
       detail: (context, r) => Text('Detalle: ${r['mensaje']}'),
       toggle: toggle,
       extraPatch: extraPatch,
+      afterSave: afterSave,
+      mail: mail,
     );
   }
 
@@ -57,6 +62,14 @@ void main() {
     onValue: 'resuelto',
     offValue: 'nuevo',
   );
+
+  RowPromptMail mailPara(String to) {
+    return RowPromptMail(
+      to: (_) => to,
+      subject: (_) => 'Respuesta a tu reporte',
+      buildBody: (_, text) => 'Hola,\n\n$text',
+    );
+  }
 
   Future<void> openPrompt(
     WidgetTester tester, {
@@ -91,6 +104,11 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Cancelar'));
     await tester.pumpAndSettle();
     await dialog;
+  }
+
+  Future<void> confirm(WidgetTester tester) async {
+    await tester.tap(find.widgetWithText(AppButton, 'Enviar respuesta'));
+    await tester.pumpAndSettle();
   }
 
   group('showRowPrompt', () {
@@ -128,8 +146,7 @@ void main() {
       );
 
       await tester.enterText(find.byType(TextFormField), '');
-      await tester.tap(find.widgetWithText(AppButton, 'Enviar respuesta'));
-      await tester.pump();
+      await confirm(tester);
 
       expect(called, isFalse, reason: 'confirmó sin escribir nada');
       expect(find.text('Escribí algo antes de confirmar.'), findsOneWidget);
@@ -156,8 +173,7 @@ void main() {
       );
 
       await tester.enterText(find.byType(TextFormField), '  Te ayudamos.  ');
-      await tester.tap(find.widgetWithText(AppButton, 'Enviar respuesta'));
-      await tester.pumpAndSettle();
+      await confirm(tester);
 
       expect(
         saved,
@@ -189,8 +205,7 @@ void main() {
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
       await tester.enterText(find.byType(TextFormField), 'Seguimos revisando.');
-      await tester.tap(find.widgetWithText(AppButton, 'Enviar respuesta'));
-      await tester.pumpAndSettle();
+      await confirm(tester);
 
       expect(saved?['estado'], 'nuevo');
       expect(saved?['respuesta'], 'Seguimos revisando.');
@@ -211,8 +226,7 @@ void main() {
       );
 
       await tester.enterText(find.byType(TextFormField), 'Respuesta');
-      await tester.tap(find.widgetWithText(AppButton, 'Enviar respuesta'));
-      await tester.pumpAndSettle();
+      await confirm(tester);
 
       expect(called, isTrue, reason: 'no intentó grabar');
       expect(
@@ -240,6 +254,156 @@ void main() {
       expect(called, isFalse);
       expect(find.byType(Dialog), findsNothing);
       expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+    });
+  });
+
+  group('afterSave', () {
+    testWidgets('se llama con el patch después de guardar', (tester) async {
+      Map<String, Object?>? recibido;
+      var filas = 0;
+      await openPrompt(
+        tester,
+        spec: prompt(
+          afterSave: (ctx, r, patch) async {
+            filas++;
+            recibido = patch;
+          },
+        ),
+        onSubmit: (_) async => true,
+      );
+
+      await tester.enterText(find.byType(TextFormField), 'Listo');
+      await confirm(tester);
+
+      expect(filas, 1, reason: 'no se avisó después de guardar');
+      expect(recibido?['respuesta'], 'Listo');
+      expect(find.byType(Dialog), findsNothing);
+      await dialog;
+    });
+
+    testWidgets('no se llama si el guardado falla', (tester) async {
+      var filas = 0;
+      await openPrompt(
+        tester,
+        spec: prompt(afterSave: (ctx, r, patch) async => filas++),
+        onSubmit: (_) async => false,
+      );
+
+      await tester.enterText(find.byType(TextFormField), 'Listo');
+      await confirm(tester);
+
+      expect(filas, 0, reason: 'avisó pese a que no se guardó');
+      await closeCancelling(tester);
+    });
+
+    testWidgets('no se llama al cancelar', (tester) async {
+      var filas = 0;
+      await openPrompt(
+        tester,
+        spec: prompt(afterSave: (ctx, r, patch) async => filas++),
+        onSubmit: (_) async => true,
+      );
+
+      await closeCancelling(tester);
+
+      expect(filas, 0);
+    });
+
+    testWidgets('si falla, avisa y cierra igual', (tester) async {
+      await openPrompt(
+        tester,
+        spec: prompt(
+          afterSave: (ctx, r, patch) async => throw StateError('sin permiso'),
+        ),
+        onSubmit: (_) async => true,
+      );
+
+      await tester.enterText(find.byType(TextFormField), 'Listo');
+      await confirm(tester);
+
+      expect(
+        find.text('Se guardó la respuesta, pero no se pudo avisar en la app.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byType(Dialog),
+        findsNothing,
+        reason: 'la respuesta ya estaba guardada: no debe quedar el diálogo',
+      );
+      await dialog;
+    });
+  });
+
+  group('botón Enviar por mail', () {
+    testWidgets('aparece cuando el prompt lo define', (tester) async {
+      await openPrompt(
+        tester,
+        spec: prompt(mail: mailPara('ana@mail.com')),
+        onSubmit: (_) async => true,
+      );
+
+      expect(find.widgetWithText(AppButton, 'Enviar por mail'), findsOneWidget);
+      expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+
+      await closeCancelling(tester);
+    });
+
+    testWidgets('no aparece si el prompt no lo define', (tester) async {
+      await openPrompt(tester, spec: prompt(), onSubmit: (_) async => true);
+
+      expect(find.widgetWithText(AppButton, 'Enviar por mail'), findsNothing);
+
+      await closeCancelling(tester);
+    });
+
+    testWidgets('queda deshabilitado si el ticket no tiene email', (
+      tester,
+    ) async {
+      await openPrompt(
+        tester,
+        spec: prompt(mail: mailPara('')),
+        onSubmit: (_) async => true,
+      );
+
+      final button = tester.widget<AppButton>(
+        find.widgetWithText(AppButton, 'Enviar por mail'),
+      );
+      expect(button.onPressed, isNull);
+
+      await closeCancelling(tester);
+    });
+
+    testWidgets('el mail sale con el texto actual del campo', (tester) async {
+      String? textoUsado;
+      var abiertos = 0;
+      await openPrompt(
+        tester,
+        spec: prompt(
+          mail: RowPromptMail(
+            to: (_) => 'ana@mail.com',
+            subject: (_) => 'Respuesta a tu reporte',
+            buildBody: (_, text) {
+              abiertos++;
+              textoUsado = text;
+              return 'Hola,\n\n$text';
+            },
+          ),
+        ),
+        onSubmit: (_) async => true,
+      );
+
+      await tester.enterText(find.byType(TextFormField), 'Probando el mail');
+      await tester.tap(find.widgetWithText(AppButton, 'Enviar por mail'));
+      await tester.pump();
+
+      expect(abiertos, 1, reason: 'no se armó el mail');
+      expect(
+        textoUsado,
+        'Probando el mail',
+        reason: 'el cuerpo quedó con el texto de antes de escribir',
+      );
+
+      await closeCancelling(tester);
     });
   });
 }

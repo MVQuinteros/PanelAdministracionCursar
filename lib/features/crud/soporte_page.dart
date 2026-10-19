@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/cursar_palette.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/badge.dart';
+import '../../data/models/catalog_models.dart' show NotificacionModel;
 import '../../data/models/model_providers.dart' hide Doc;
 import 'crud_page.dart';
 import 'crud_spec.dart';
@@ -68,7 +69,9 @@ class SoportePage extends StatelessWidget {
         label: 'Respuesta',
         width: 220,
         cell: (context, row) {
-          final respuesta = Fmt.display(row['respuesta']);
+          // Se mira el valor crudo: `Fmt.display` devuelve '—' para vacío y
+          // entonces un reporte sin responder pasaría el `isEmpty`.
+          final respuesta = '${row['respuesta'] ?? ''}'.trim();
           if (respuesta.isEmpty) return const MutedText('Sin respuesta');
           return Row(
             children: [
@@ -130,6 +133,16 @@ class SoportePage extends StatelessWidget {
             'respondidoPor':
                 FirebaseAuth.instance.currentUser?.email ?? 'Admin',
           },
+          afterSave: _notificarRespuesta,
+          mail: RowPromptMail(
+            to: (row) => '${row['email'] ?? ''}',
+            subject: (row) => 'Respuesta a tu reporte · CURSAR',
+            buildBody: (row, text) => 'Hola,\n\n'
+                'Te escribimos por tu reporte de soporte:\n\n'
+                '"${row['mensaje'] ?? ''}"\n\n'
+                'Respuesta:\n$text\n\n'
+                'Saludos,\nEquipo CURSAR',
+          ),
         ),
       ),
       RowActionSpec(
@@ -160,6 +173,33 @@ class SoportePage extends StatelessWidget {
       ),
     ],
   );
+
+  /// Deja la notificación personal en `notificaciones`, para que la app le
+  /// avise al usuario que su reporte ya tiene respuesta.
+  ///
+  /// La app las lee filtrando por `userUid`. Si el ticket no lo tiene
+  /// (reportes viejos cargados a mano) no hay a quién avisarle: no se crea
+  /// nada y la respuesta se guarda igual.
+  static Future<void> _notificarRespuesta(
+    BuildContext context,
+    Doc row,
+    Map<String, Object?> patch,
+  ) async {
+    final uid = '${row['userUid'] ?? ''}'.trim();
+    if (uid.isEmpty) return;
+
+    await NotificacionModel().add(<String, Object?>{
+      'userUid': uid,
+      'titulo': 'Respondimos tu reporte',
+      'mensaje': 'Ya está la respuesta a tu reporte de soporte. '
+          'Entrá a la app para verla.',
+      'respuesta': '${patch['respuesta'] ?? ''}',
+      'leido': false,
+      'fecha': FieldValue.serverTimestamp(),
+      'tipo': 'soporte',
+      'soporteId': '${row['id'] ?? ''}',
+    });
+  }
 
   static bool _isResolved(Map<String, Object?> row) => row['estado'] == 'resuelto';
 
