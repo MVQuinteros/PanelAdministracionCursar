@@ -317,7 +317,6 @@ class _Charts extends StatelessWidget {
               chart: _Doughnut(
                 counts: testAreas,
                 palette: DashboardPage.chartColors,
-                categoryLabel: 'Área de interés',
               ),
             ),
           ],
@@ -375,14 +374,10 @@ class _Doughnut extends StatefulWidget {
   const _Doughnut({
     required this.counts,
     required this.palette,
-    this.categoryLabel = 'Área',
   });
 
   final Map<String, int> counts;
   final List<Color> palette;
-
-  /// Nombre del criterio que encabeza el tooltip ("Área", "Área de interés").
-  final String categoryLabel;
 
   @override
   State<_Doughnut> createState() => _DoughnutState();
@@ -395,8 +390,9 @@ class _DoughnutState extends State<_Doughnut> {
   static const double _sectionRadius = 26;
 
   /// Alto reservado para el panel de info. Es fijo para que, al aparecer o
-  /// desaparecer, no corran ni el redondel ni la leyenda.
-  static const double _infoSlotHeight = 64;
+  /// desaparecer, no corran ni el redondel ni la leyenda. Deja entrar el nombre
+  /// de la categoría en hasta dos líneas.
+  static const double _infoSlotHeight = 82;
 
   /// Índice del segmento bajo el cursor; `null` cuando no hay ninguno.
   ///
@@ -404,9 +400,14 @@ class _DoughnutState extends State<_Doughnut> {
   /// el panel de info y el cursor, nunca el `PieChart`.
   final ValueNotifier<int?> _hovered = ValueNotifier<int?>(null);
 
+  /// Controla el scroll de la leyenda para poder mostrarle al usuario una barra
+  /// de scroll siempre visible (si no, no se nota que hay más áreas abajo).
+  final ScrollController _legendScroll = ScrollController();
+
   @override
   void dispose() {
     _hovered.dispose();
+    _legendScroll.dispose();
     super.dispose();
   }
 
@@ -526,8 +527,7 @@ class _DoughnutState extends State<_Doughnut> {
                         }
                         return _DoughnutInfo(
                           swatch: palette[index % palette.length],
-                          title:
-                              '${widget.categoryLabel}: ${entries[index].key}',
+                          title: entries[index].key,
                           value: entries[index].value,
                           total: total,
                         );
@@ -535,16 +535,30 @@ class _DoughnutState extends State<_Doughnut> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // Leyenda vertical: color + nombre, uno por fila.
+                  // Leyenda vertical (color + nombre, uno por fila) dentro de un
+                  // recuadro con borde y barra de scroll visible: así se nota
+                  // que hay más áreas para deslizar.
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: _LegendRight(
-                        labels: <String>[for (final e in entries) e.key],
-                        colors: <Color>[
-                          for (var i = 0; i < entries.length; i++)
-                            palette[i % palette.length],
-                        ],
-                        textColor: p.textSecondary,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: p.borderSubtle),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+                      child: Scrollbar(
+                        controller: _legendScroll,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _legendScroll,
+                          child: _LegendRight(
+                            labels: <String>[for (final e in entries) e.key],
+                            colors: <Color>[
+                              for (var i = 0; i < entries.length; i++)
+                                palette[i % palette.length],
+                            ],
+                            textColor: p.textSecondary,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -607,7 +621,7 @@ class _DoughnutInfo extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: fg,
