@@ -6,7 +6,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/cursar_palette.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/badge.dart';
-import '../../data/models/catalog_models.dart' show NotificacionModel;
+import '../../data/models/catalog_models.dart'
+    show NotificacionModel, SoporteModel;
 import '../../data/models/model_providers.dart' hide Doc;
 import 'crud_page.dart';
 import 'crud_spec.dart';
@@ -91,7 +92,10 @@ class SoportePage extends StatelessWidget {
         key: 'createdAt',
         label: 'Recibido',
         width: 150,
-        cell: (context, row) => MutedText(Fmt.dateTime(row['createdAt'])),
+        // `TruncatedText` y no `MutedText`: cuando la tabla se achica para que
+        // entre la columna de Acciones, la fecha se recorta con "…" y el
+        // tooltip deja ver el valor completo.
+        cell: (context, row) => TruncatedText(Fmt.dateTime(row['createdAt'])),
         csv: (row) => Fmt.dateTime(row['createdAt']),
       ),
       ColumnSpec(
@@ -177,15 +181,18 @@ class SoportePage extends StatelessWidget {
   /// Deja la notificación personal en `notificaciones`, para que la app le
   /// avise al usuario que su reporte ya tiene respuesta.
   ///
-  /// La app las lee filtrando por `userUid`. Si el ticket no lo tiene
-  /// (reportes viejos cargados a mano) no hay a quién avisarle: no se crea
+  /// La app las lee filtrando por `userUid`.
+  ///
+  /// El destinatario sale de [SoporteModel.uidDe], que acepta `userUid` y `uid`
+  /// (la app móvil escribe `uid`). Si el ticket no tiene ninguno de los dos
+  /// —reportes viejos cargados a mano— no hay a quién avisarle: no se crea
   /// nada y la respuesta se guarda igual.
   static Future<void> _notificarRespuesta(
     BuildContext context,
     Doc row,
     Map<String, Object?> patch,
   ) async {
-    final uid = '${row['userUid'] ?? ''}'.trim();
+    final uid = SoporteModel.uidDe(row);
     if (uid.isEmpty) return;
 
     await NotificacionModel().add(<String, Object?>{
@@ -226,7 +233,7 @@ class _ReporteDetalle extends StatelessWidget {
     final p = context.palette;
     final mensaje = Fmt.display(row['mensaje']);
     final email = Fmt.display(row['email']);
-    final uid = Fmt.display(row['userUid']);
+    final uid = SoporteModel.uidDe(row);
 
     return Container(
       width: double.infinity,

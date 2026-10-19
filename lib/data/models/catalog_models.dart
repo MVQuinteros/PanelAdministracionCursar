@@ -184,6 +184,16 @@ class AvisoModel {
 class SoporteModel {
   static const collection = 'soporte';
 
+  /// uid del usuario que envió el reporte.
+  ///
+  /// La app móvil escribe el campo `uid` (`reporte_model.dart`); los reportes
+  /// cargados desde el panel usan `userUid`. Se aceptan los dos porque de esto
+  /// dependen el join con `usuarios` y la notificación personal de la
+  /// respuesta: mientras se leyó solo `userUid`, para los reportes de la app la
+  /// notificación nunca se creaba.
+  static String uidDe(Doc row) =>
+      '${row['userUid'] ?? row['uid'] ?? ''}'.trim();
+
   Future<List<Doc>> list() async {
     final snap = await FirebaseFirestore.instance
         .collection(collection)
@@ -195,17 +205,15 @@ class SoporteModel {
     return _attachUsuarios(rows);
   }
 
-  /// Completa el `email` del reporte con `usuarios/{userUid}` cuando el
-  /// mensaje viene sin él (la app puede escribir solo el uid).
+  /// Completa el `email` del reporte con `usuarios/{uidDe}` cuando el mensaje
+  /// viene sin él (la app escribe el uid, no el email).
   ///
   /// Mismo join tolerante a fallos que [TestResultadoModel.list]: si no se
   /// pueden leer los usuarios, los reportes quedan como vinieron.
   Future<List<Doc>> _attachUsuarios(List<Doc> rows) async {
     final faltaEmail = rows.any((r) {
-      final uid = r['userUid'];
-      return uid is String &&
-          uid.isNotEmpty &&
-          '${r['email'] ?? ''}'.trim().isEmpty;
+      final uid = uidDe(r);
+      return uid.isNotEmpty && '${r['email'] ?? ''}'.trim().isEmpty;
     });
     if (!faltaEmail) return rows;
 
@@ -222,8 +230,8 @@ class SoporteModel {
         if (u['id'] is String) u['id']! as String: u,
     };
     for (final row in rows) {
-      final uid = row['userUid'];
-      if (uid is! String) continue;
+      final uid = uidDe(row);
+      if (uid.isEmpty) continue;
       if ('${row['email'] ?? ''}'.trim().isNotEmpty) continue;
       final user = porUid[uid];
       if (user == null) continue;

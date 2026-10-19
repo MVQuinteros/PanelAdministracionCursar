@@ -43,10 +43,15 @@ jobs:
       # es el nombre del repo RESPETANDO mayúsculas. Se arma con la variable del
       # evento para no dejarlo escrito a mano (que es como se rompe: minúsculas
       # donde va camelCase dan 404 al pedir main.dart.js).
+      #
+      # `BUILD_SHA` viaja dentro del bundle y se muestra al pie del sidebar: es
+      # la forma de saber, sin adivinar, qué build está sirviendo Pages (que
+      # cachea 10 minutos y a veces devuelve el anterior).
       - name: Build web
         run: |
           flutter build web \
             --release \
+            --dart-define=BUILD_SHA=${{ github.sha }} \
             --base-href "/${{ github.event.repository.name }}/"
 
       - uses: actions/upload-pages-artifact@v3

@@ -9,11 +9,16 @@ import 'crud_spec.dart';
 /// de scroll horizontal al pie.
 ///
 /// Reemplaza al `<table>` con `thead { position: sticky }` del CSS. El ancho
-/// de cada columna viene de [ColumnSpec.width]; si la suma no entra, la tabla
-/// scrollea horizontalmente. El header y el cuerpo usan [ScrollController]
-/// horizontales separados —un [ScrollController] no puede atender varias
-/// posiciones a la vez— y el offset del cuerpo se copia al header para que las
-/// columnas nunca se desalineen.
+/// de cada columna viene de [ColumnSpec.width], pero es un ancho *deseado*: si
+/// la suma no entra en el viewport, las columnas se achican en proporción a lo
+/// que pueden ceder (ver [_columnWidths]) para que la última —Acciones, con
+/// "Responder" / "Editar" / "Eliminar"— nunca quede fuera de la pantalla. El
+/// scroll horizontal queda solo como último recurso, cuando ni el ancho mínimo
+/// por columna entra.
+///
+/// El header y el cuerpo usan [ScrollController] horizontales separados —un
+/// [ScrollController] no puede atender varias posiciones a la vez— y el offset
+/// del cuerpo se copia al header para que las columnas nunca se desalineen.
 ///
 /// La barra horizontal comparte el controller del cuerpo ([_bodyHorizontal]),
 /// que está adjunto a un único scroll, así que no dispara el assert de
@@ -86,20 +91,28 @@ class _CrudTableState extends State<CrudTable> {
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // La tabla nunca es más angosta que el viewport: así el fondo y los
-          // bordes de fila cubren todo el ancho disponible.
+          // Las tablas de este panel tienen más columnas de las que entran en
+          // un monitor común: Soporte son 1180 px de columnas + ~310 de la de
+          // Acciones contra ~1070 disponibles en un 1366. Eso empujaba la
+          // columna de Acciones fuera de la pantalla y "Responder" quedaba
+          // inalcanzable. Ahora se achican las columnas para que todo entre; el
+          // scroll horizontal queda solo cuando ni el mínimo entra.
+          final actionsArea = hasActions ? actionsWidth + 24 : 0;
+          final columnWidths =
+              _columnWidths(spec.columns, constraints.maxWidth - actionsArea) ??
+                  <double>[for (final c in spec.columns) c.width];
+
           final natural =
-              spec.columns.fold<double>(0, (sum, c) => sum + c.width) +
-                  actionsWidth +
-                  (hasActions ? 24 : 0);
+              columnWidths.fold<double>(0, (sum, w) => sum + w) + actionsArea;
           final tableWidth = natural < constraints.maxWidth
               ? constraints.maxWidth
               : natural;
 
           // La barra horizontal solo se dibuja si la tabla realmente es más
           // ancha que el viewport. En Tags o Test vocacional, que entran
-          // justos, una barra inmóvil sería ruido.
-          final needsHorizontalScroll = natural > constraints.maxWidth;
+          // justos, una barra inmóvil sería ruido. La tolerancia evita que un
+          // residuo de coma flotante (1e-13) haga aparecer la barra de más.
+          final needsHorizontalScroll = natural > constraints.maxWidth + 0.5;
 
           return Column(
             children: [
@@ -114,13 +127,13 @@ class _CrudTableState extends State<CrudTable> {
                     width: tableWidth,
                     child: Row(
                       children: [
-                        for (final c in spec.columns)
+                        for (var i = 0; i < spec.columns.length; i++)
                           SizedBox(
-                            width: c.width,
+                            width: columnWidths[i],
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
                               child: Text(
-                                c.label.toUpperCase(),
+                                spec.columns[i].label.toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -162,6 +175,7 @@ class _CrudTableState extends State<CrudTable> {
                             for (var i = 0; i < widget.rows.length; i++)
                               _Row(
                                 spec: spec,
+                                columnWidths: columnWidths,
                                 row: widget.rows[i],
                                 striped: i.isOdd,
                                 actionsWidth: actionsWidth,
@@ -237,11 +251,48 @@ class _CrudTableState extends State<CrudTable> {
     // Aproximación: texto + padding + icono.
     return 20 + a.label.length * 6.6 + (a.icon != null ? 20 : 0);
   }
+
+  /// Ancho mínimo de una columna antes de preferir el scroll horizontal: en
+  /// 92 px entran un badge de estado o una fecha sin partirse.
+  static const double _minColumnWidth = 92;
+
+  /// Reparte [available] entre las columnas cuando no entran.
+  ///
+  /// Cada una arranca en su mínimo ([_minColumnWidth]) y lo que sobra se
+  /// reparte en proporción a lo que esa columna puede ceder, así el ancho
+  /// extra va a las anchas (mensaje) y no a las cortas (estado). Devuelve
+  /// `null` si los anchos declarados ya entran (se usan tal cual, con el
+  /// sobrante como espacio libre) o si ni los mínimos entran, donde conviene
+  /// el scroll horizontal de siempre.
+  static List<double>? _columnWidths(List<ColumnSpec> columns, double available) {
+    final declared = columns.fold<double>(0, (sum, c) => sum + c.width);
+    if (declared <= available) return null;
+
+    final floors = <double>[
+      for (final c in columns)
+        c.width < _minColumnWidth ? c.width : _minColumnWidth,
+    ];
+    final floorsTotal = floors.fold<double>(0, (sum, w) => sum + w);
+    if (floorsTotal > available) return null;
+
+    final give = <double>[
+      for (var i = 0; i < columns.length; i++)
+        columns[i].width > floors[i] ? columns[i].width - floors[i] : 0,
+    ];
+    final giveTotal = give.fold<double>(0, (sum, w) => sum + w);
+    final slack = available - floorsTotal;
+
+    return <double>[
+      for (var i = 0; i < columns.length; i++)
+        floors[i] + (giveTotal == 0 ? 0 : slack * give[i] / giveTotal),
+    ];
+  }
 }
 
 class _Row extends StatelessWidget {
   const _Row({
     required this.spec,
+    required this.columnWidths,
     required this.row,
     required this.striped,
     required this.actionsWidth,
@@ -250,6 +301,9 @@ class _Row extends StatelessWidget {
   });
 
   final CrudSpec spec;
+
+  /// Ancho ya resuelto de cada columna de [spec], en el mismo orden.
+  final List<double> columnWidths;
   final Doc row;
   final bool striped;
   final double actionsWidth;
@@ -278,9 +332,9 @@ class _Row extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            for (final c in spec.columns)
+            for (var i = 0; i < spec.columns.length; i++)
               SizedBox(
-                width: c.width,
+                width: columnWidths[i],
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -288,7 +342,7 @@ class _Row extends StatelessWidget {
                   ),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: c.cell(context, row),
+                    child: spec.columns[i].cell(context, row),
                   ),
                 ),
               ),

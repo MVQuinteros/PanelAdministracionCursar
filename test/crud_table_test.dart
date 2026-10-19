@@ -135,6 +135,79 @@ void main() {
       });
     }
   });
+
+  group('columna de Acciones', () {
+    // Ancho *útil* del panel (viewport menos sidebar de 248 y padding): 1070 px
+    // en un monitor de 1366 y 984 en uno de 1280. Es el número que importa y el
+    // que dejaba a "Responder" fuera de la pantalla.
+    testWidgets('se ve con 1070 px útiles (1366 con sidebar)', (tester) async {
+      await pumpTablaSoporte(tester, const Size(1118, 900));
+
+      expect(
+        _horizontalScrollbar(tester),
+        isNull,
+        reason: 'las columnas deberían achicarse en vez de scrollear',
+      );
+      expectAccionesVisibles(tester);
+      expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+    });
+
+    testWidgets('se ve con 984 px útiles (1280 con sidebar)', (tester) async {
+      await pumpTablaSoporte(tester, const Size(1032, 800));
+
+      expect(_horizontalScrollbar(tester), isNull);
+      expectAccionesVisibles(tester);
+      expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+    });
+
+    testWidgets('en un ancho imposible vuelve al scroll horizontal', (
+      tester,
+    ) async {
+      await pumpTablaSoporte(tester, const Size(420, 860));
+
+      // 388 px para 6 columnas + Acciones: ni los mínimos entran. Ahí la tabla
+      // conserva sus anchos y scrollea, que es preferible a partir los badges.
+      expect(_horizontalScroll(tester)!.maxScrollExtent, greaterThan(0));
+      expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+    });
+  });
+}
+
+/// Verifica que los botones de cada fila caigan dentro de la tabla.
+///
+/// Es la regresión del reporte real: con los anchos declarados de Soporte, la
+/// columna de Acciones se iba fuera del viewport (la tabla "se veía hasta
+/// Recibido") y "Responder" era inalcanzable, aunque el botón existiera.
+void expectAccionesVisibles(WidgetTester tester) {
+  final tabla = tester.getRect(find.byType(CrudTable));
+
+  for (final label in const <String>['Responder', 'Resolver', 'Eliminar']) {
+    final boton = tester.getRect(find.text(label).first);
+    expect(
+      boton.left,
+      greaterThanOrEqualTo(tabla.left - 1),
+      reason: '$label se fue a la izquierda de la tabla',
+    );
+    expect(
+      boton.right,
+      lessThanOrEqualTo(tabla.right + 1),
+      reason: '$label quedó fuera de la tabla: la columna Acciones es inalcanzable',
+    );
+  }
+}
+
+/// Monta la tabla con los anchos y las acciones reales de `SoportePage.spec`.
+Future<void> pumpTablaSoporte(WidgetTester tester, Size size) async {
+  await pumpAt(
+    tester,
+    size: size,
+    mobile: size.width < 900,
+    child: CrudTable(
+      spec: _soporteSpec(),
+      rows: _soporteRows,
+      onAction: (action, row) {},
+    ),
+  );
 }
 
 /// Monta la tabla con filas falsas.
@@ -271,5 +344,95 @@ final List<Doc> _rows = <Doc>[
     'area': 'Educación',
     'estado': 'Pendiente',
     'createdAt': '20/05/2026',
+  },
+];
+
+/// Spec con los anchos y las acciones reales de la tabla de Soporte.
+///
+/// Es la más ancha del panel: 1180 px de columnas más ~310 de Acciones. Se
+/// repite acá, en vez de importar la página, para no arrastrar Firebase.
+CrudSpec _soporteSpec() => CrudSpec(
+  title: 'Soporte',
+  subtitle: 'Reportes y consultas enviados desde la app',
+  loader: (_) async => _soporteRows,
+  columns: <ColumnSpec>[
+    ColumnSpec(
+      key: 'email',
+      label: 'Email',
+      width: 220,
+      cell: (context, row) => TruncatedText('${row['email']}'),
+    ),
+    ColumnSpec(
+      key: 'tipo',
+      label: 'Tipo',
+      width: 130,
+      cell: (context, row) =>
+          StatusBadge('${row['tipo']}', tone: Tone.neutral),
+    ),
+    ColumnSpec(
+      key: 'mensaje',
+      label: 'Mensaje',
+      width: 340,
+      cell: (context, row) => TruncatedText('${row['mensaje']}'),
+    ),
+    ColumnSpec(
+      key: 'respuesta',
+      label: 'Respuesta',
+      width: 220,
+      cell: (context, row) => const MutedText('Sin respuesta'),
+    ),
+    ColumnSpec(
+      key: 'createdAt',
+      label: 'Recibido',
+      width: 150,
+      cell: (context, row) => MutedText('${row['createdAt']}'),
+    ),
+    ColumnSpec(
+      key: 'estado',
+      label: 'Estado',
+      width: 120,
+      cell: (context, row) => const StatusBadge('Nuevo', tone: Tone.warning),
+    ),
+  ],
+  rowActions: const <RowActionSpec>[
+    RowActionSpec(
+      action: 'responder',
+      label: 'Responder',
+      tone: Tone.primary,
+      icon: Icons.reply_outlined,
+    ),
+    RowActionSpec(
+      action: 'resolver',
+      label: 'Resolver',
+      tone: Tone.success,
+      icon: Icons.check,
+    ),
+    RowActionSpec(
+      action: 'delete',
+      label: 'Eliminar',
+      tone: Tone.danger,
+      icon: Icons.delete_outline,
+    ),
+  ],
+);
+
+final List<Doc> _soporteRows = <Doc>[
+  <String, Object?>{
+    'id': 's1',
+    'email': 'alumno@ejemplo.com',
+    'tipo': 'Error',
+    'mensaje': 'No puedo inscribirme a la materia: me da error al confirmar.',
+    'respuesta': '',
+    'createdAt': '18/10/2026 09:12',
+    'estado': 'nuevo',
+  },
+  <String, Object?>{
+    'id': 's2',
+    'email': 'otro.alumno@ejemplo.com',
+    'tipo': 'Consulta',
+    'mensaje': '¿Cuándo abre la inscripción del segundo cuatrimestre?',
+    'respuesta': 'Abre el 1 de agosto.',
+    'createdAt': '17/10/2026 18:40',
+    'estado': 'resuelto',
   },
 ];
