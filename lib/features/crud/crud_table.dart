@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -12,9 +14,11 @@ import 'crud_spec.dart';
 /// de cada columna viene de [ColumnSpec.width], pero es un ancho *deseado*: si
 /// la suma no entra en el viewport, las columnas se achican en proporción a lo
 /// que pueden ceder (ver [_columnWidths]) para que la última —Acciones, con
-/// "Responder" / "Editar" / "Eliminar"— nunca quede fuera de la pantalla. El
-/// scroll horizontal queda solo como último recurso, cuando ni el ancho mínimo
-/// por columna entra.
+/// "Responder" / "Editar" / "Eliminar"— nunca quede fuera de la pantalla. Si ni
+/// achicando las columnas entra (Ofertas: 8 columnas más 4 botones), se recorta
+/// el ancho reservado a Acciones y los botones que sobran bajan de línea (ver
+/// [_actionsArea]). El scroll horizontal queda solo como último recurso, cuando
+/// ni el ancho mínimo por columna entra.
 ///
 /// El header y el cuerpo usan [ScrollController] horizontales separados —un
 /// [ScrollController] no puede atender varias posiciones a la vez— y el offset
@@ -75,6 +79,8 @@ class _CrudTableState extends State<CrudTable> {
     final spec = widget.spec;
     final hasActions = spec.rowActions.isNotEmpty;
 
+    // Ancho "natural" de la columna de Acciones: todos los botones de una fila
+    // en una sola línea. Más abajo puede recortarse (ver [_actionsArea]).
     final actionsWidth = hasActions
         ? spec.rowActions
                 .map((a) => _buttonWidth(a))
@@ -97,7 +103,12 @@ class _CrudTableState extends State<CrudTable> {
           // columna de Acciones fuera de la pantalla y "Responder" quedaba
           // inalcanzable. Ahora se achican las columnas para que todo entre; el
           // scroll horizontal queda solo cuando ni el mínimo entra.
-          final actionsArea = hasActions ? actionsWidth + 24 : 0;
+          final actionsArea = _actionsArea(
+            columns: spec.columns,
+            actions: spec.rowActions,
+            naturalWidth: actionsWidth,
+            maxWidth: constraints.maxWidth,
+          );
           final columnWidths =
               _columnWidths(spec.columns, constraints.maxWidth - actionsArea) ??
                   <double>[for (final c in spec.columns) c.width];
@@ -147,7 +158,9 @@ class _CrudTableState extends State<CrudTable> {
                           ),
                         if (hasActions)
                           SizedBox(
-                            width: actionsWidth + 12,
+                            // El header no lleva el padding derecho de la fila,
+                            // por eso reserva 12 px menos.
+                            width: actionsArea - 12,
                             child: const SizedBox.shrink(),
                           ),
                       ],
@@ -178,7 +191,7 @@ class _CrudTableState extends State<CrudTable> {
                                 columnWidths: columnWidths,
                                 row: widget.rows[i],
                                 striped: i.isOdd,
-                                actionsWidth: actionsWidth,
+                                actionsArea: actionsArea,
                                 hasActions: hasActions,
                                 onAction: widget.onAction,
                               ),
@@ -252,9 +265,55 @@ class _CrudTableState extends State<CrudTable> {
     return 20 + a.label.length * 6.6 + (a.icon != null ? 20 : 0);
   }
 
+  /// Ancho a reservar para la columna de Acciones en un viewport de [maxWidth].
+  ///
+  /// [naturalWidth] es lo que piden todos los botones de una fila en una sola
+  /// línea. Si con eso las columnas todavía llegan a su mínimo, se reserva
+  /// entero (es lo que pasa en todos los módulos menos Ofertas). Si no, se
+  /// reserva lo justo para que las columnas entren —[maxWidth] menos sus
+  /// mínimos— y en el peor caso el ancho de dos botones, para que los que
+  /// sobran bajen de línea en vez de quedar fuera de la pantalla.
+  static double _actionsArea({
+    required List<ColumnSpec> columns,
+    required List<RowActionSpec> actions,
+    required double naturalWidth,
+    required double maxWidth,
+  }) {
+    if (actions.isEmpty) return 0;
+
+    final natural = naturalWidth + 24;
+    final room = maxWidth - _floorsTotal(columns);
+    if (room >= natural) return natural;
+
+    return math.max(_wrappedActionsArea(actions), room);
+  }
+
+  /// Ancho mínimo para que los botones de Acciones puedan bajar de línea sin
+  /// recortarse: los dos más anchos —que son los que definen el ancho de una
+  /// línea— más el espaciado del `Wrap` y los paddings de la celda.
+  static double _wrappedActionsArea(List<RowActionSpec> actions) {
+    final widths = <double>[for (final a in actions) _buttonWidth(a)]..sort();
+    final take = math.min(2, widths.length);
+
+    var buttons = 0.0;
+    for (var i = 0; i < take; i++) {
+      buttons += widths[widths.length - 1 - i];
+    }
+
+    return buttons + (take > 1 ? 6 : 0) + 12 + 24;
+  }
+
   /// Ancho mínimo de una columna antes de preferir el scroll horizontal: en
   /// 92 px entran un badge de estado o una fecha sin partirse.
   static const double _minColumnWidth = 92;
+
+  /// Piso de una columna: las más angostas que [_minColumnWidth] no ceden nada
+  /// (bajar de ahí parte el badge o la fecha).
+  static double _floor(ColumnSpec c) =>
+      c.width < _minColumnWidth ? c.width : _minColumnWidth;
+
+  static double _floorsTotal(List<ColumnSpec> columns) =>
+      columns.fold<double>(0, (sum, c) => sum + _floor(c));
 
   /// Reparte [available] entre las columnas cuando no entran.
   ///
@@ -268,11 +327,8 @@ class _CrudTableState extends State<CrudTable> {
     final declared = columns.fold<double>(0, (sum, c) => sum + c.width);
     if (declared <= available) return null;
 
-    final floors = <double>[
-      for (final c in columns)
-        c.width < _minColumnWidth ? c.width : _minColumnWidth,
-    ];
-    final floorsTotal = floors.fold<double>(0, (sum, w) => sum + w);
+    final floors = <double>[for (final c in columns) _floor(c)];
+    final floorsTotal = _floorsTotal(columns);
     if (floorsTotal > available) return null;
 
     final give = <double>[
@@ -295,7 +351,7 @@ class _Row extends StatelessWidget {
     required this.columnWidths,
     required this.row,
     required this.striped,
-    required this.actionsWidth,
+    required this.actionsArea,
     required this.hasActions,
     required this.onAction,
   });
@@ -306,7 +362,9 @@ class _Row extends StatelessWidget {
   final List<double> columnWidths;
   final Doc row;
   final bool striped;
-  final double actionsWidth;
+
+  /// Ancho de la celda de Acciones (ya recortado si hacía falta).
+  final double actionsArea;
   final bool hasActions;
   final void Function(String action, Doc row) onAction;
 
@@ -348,7 +406,7 @@ class _Row extends StatelessWidget {
               ),
             if (hasActions)
               SizedBox(
-                width: actionsWidth + 24,
+                width: actionsArea,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Align(
@@ -411,12 +469,19 @@ class _ActionButton extends StatelessWidget {
                   Icon(spec.icon, size: 13, color: fg),
                   const SizedBox(width: 5),
                 ],
-                Text(
-                  spec.label,
-                  style: TextStyle(
-                    color: fg,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                // `Flexible` + ellipsis: si la celda de Acciones quedó angosta
+                // (o el navegador usa un zoom alto), el rótulo se recorta en vez
+                // de desbordar la fila.
+                Flexible(
+                  child: Text(
+                    spec.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

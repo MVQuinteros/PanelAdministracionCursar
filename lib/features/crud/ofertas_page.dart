@@ -19,6 +19,16 @@ import 'crud_widgets.dart';
 class OfertasPage extends ConsumerStatefulWidget {
   const OfertasPage({super.key});
 
+  /// Spec real del módulo —mismas columnas, anchos y acciones— sin pasar por
+  /// Firestore. Lo usan los tests de layout para verificar que la columna de
+  /// Acciones entre en pantalla; con las refs vacías, el nombre de la
+  /// institución y las opciones del select quedan sin datos, que es
+  /// irrelevante para el ancho de las columnas.
+  @visibleForTesting
+  static CrudSpec debugSpec() => _OfertasPageState._specFor(
+    const _OfertasRefs(<Map<String, Object?>>[], <Map<String, Object?>>[]),
+  );
+
   @override
   ConsumerState<OfertasPage> createState() => _OfertasPageState();
 }
@@ -91,7 +101,7 @@ class _OfertasPageState extends ConsumerState<OfertasPage> {
     );
   }
 
-  CrudSpec _specFor(_OfertasRefs data) {
+  static CrudSpec _specFor(_OfertasRefs data) {
     final instNames = institutionNamesById(data.instituciones);
     final tagNames = tagNamesOf(data.tags);
 

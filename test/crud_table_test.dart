@@ -1,7 +1,14 @@
 import 'package:cursar_admin_flutter/core/widgets/badge.dart';
+import 'package:cursar_admin_flutter/features/crud/avisos_page.dart';
 import 'package:cursar_admin_flutter/features/crud/crud_spec.dart';
 import 'package:cursar_admin_flutter/features/crud/crud_table.dart';
 import 'package:cursar_admin_flutter/features/crud/crud_widgets.dart';
+import 'package:cursar_admin_flutter/features/crud/instituciones_page.dart';
+import 'package:cursar_admin_flutter/features/crud/ofertas_page.dart';
+import 'package:cursar_admin_flutter/features/crud/soporte_page.dart';
+import 'package:cursar_admin_flutter/features/crud/tags_page.dart';
+import 'package:cursar_admin_flutter/features/crud/test_vocacional_page.dart';
+import 'package:cursar_admin_flutter/features/crud/usuarios_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -171,6 +178,126 @@ void main() {
       expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
     });
   });
+
+  group('columna de Acciones en todos los módulos', () {
+    // Mismos anchos útiles que el grupo de arriba: 1118 px de ventana dejan los
+    // 1070 de un monitor de 1366 (menos sidebar de 248 y padding de 24), y 1032
+    // los 984 de uno de 1280.
+    const anchos = <String, Size>{
+      '1366': Size(1118, 900),
+      '1280': Size(1032, 800),
+    };
+
+    // Se recorren los specs reales de cada módulo: si alguien agrega una
+    // columna o un botón, acá se ve si la columna de Acciones se fue de la
+    // pantalla. Ofertas —8 columnas más 4 botones— era la única que no entraba.
+    for (final modulo in modulos.entries) {
+      for (final ancho in anchos.entries) {
+        testWidgets('${modulo.key} a ${ancho.key}', (tester) async {
+          await pumpSpec(tester, ancho.value, modulo.value);
+
+          expect(
+            _horizontalScrollbar(tester),
+            isNull,
+            reason: 'las columnas deberían achicarse en vez de scrollear',
+          );
+          expectAccionesDeSpecVisibles(tester, modulo.value);
+          expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+        });
+      }
+    }
+  });
+}
+
+/// Los specs reales de cada módulo del panel.
+///
+/// Se importan las páginas en vez de duplicar acá los anchos y los botones: si
+/// un módulo cambia, el test tiene que enterarse. Importar la página no levanta
+/// Firebase —los `loader` y los `afterSave` son closures que no se ejecutan— y
+/// `OfertasPage.debugSpec()` arma el suyo sin las refs de Firestore.
+final Map<String, CrudSpec> modulos = <String, CrudSpec>{
+  'Soporte': SoportePage.spec,
+  'Ofertas': OfertasPage.debugSpec(),
+  'Usuarios': UsuariosPage.spec,
+  'Instituciones': InstitucionesPage.spec,
+  'Avisos': AvisosPage.spec,
+  'Tags': TagsPage.spec,
+  'Test vocacional': TestVocacionalPage.spec,
+};
+
+/// Monta la tabla con las columnas y los botones reales de [spec].
+///
+/// Las celdas se reemplazan por una de mentira: para el ancho de la tabla solo
+/// importan [CrudSpec.columns] y [CrudSpec.rowActions], y así el test no
+/// necesita una fila con todos los campos de todos los módulos.
+Future<void> pumpSpec(WidgetTester tester, Size size, CrudSpec spec) async {
+  final conCeldasFalsas = CrudSpec(
+    title: spec.title,
+    subtitle: spec.subtitle,
+    loader: (_) async => _filasGenericas,
+    columns: <ColumnSpec>[
+      for (final c in spec.columns)
+        ColumnSpec(
+          key: c.key,
+          label: c.label,
+          width: c.width,
+          cell: (context, row) => Text('${row['id']}'),
+        ),
+    ],
+    rowActions: spec.rowActions,
+  );
+
+  await pumpAt(
+    tester,
+    size: size,
+    mobile: size.width < 900,
+    child: CrudTable(
+      spec: conCeldasFalsas,
+      rows: _filasGenericas,
+      onAction: (action, row) {},
+    ),
+  );
+}
+
+/// Una fila pendiente y una resuelta: así se dibujan las acciones de los dos
+/// estados (Aprobar y Rechazar, Resolver y Reabrir).
+final List<Doc> _filasGenericas = <Doc>[
+  <String, Object?>{'id': 'r1', 'aprobada': false, 'estado': 'nuevo'},
+  <String, Object?>{'id': 'r2', 'aprobada': true, 'estado': 'resuelto'},
+];
+
+/// Verifica que los botones de [spec] caigan dentro de la tabla.
+///
+/// Es la generalización de [expectAccionesVisibles] a todos los módulos: los
+/// botones condicionados a la fila (Aprobar/Rechazar, Resolver/Reabrir) solo se
+/// dibujan en algunas, por eso se recorren los `rowActions` del spec y no una
+/// lista fija de rótulos.
+void expectAccionesDeSpecVisibles(WidgetTester tester, CrudSpec spec) {
+  final tabla = tester.getRect(find.byType(CrudTable));
+
+  for (final action in spec.rowActions) {
+    final boton = find.text(action.label);
+    expect(
+      boton,
+      findsWidgets,
+      reason: 'no se dibujó ningún botón "${action.label}"',
+    );
+
+    for (var i = 0; i < boton.evaluate().length; i++) {
+      final rect = tester.getRect(boton.at(i));
+      expect(
+        rect.left,
+        greaterThanOrEqualTo(tabla.left - 1),
+        reason: '${action.label} se fue a la izquierda de la tabla',
+      );
+      expect(
+        rect.right,
+        lessThanOrEqualTo(tabla.right + 1),
+        reason:
+            '${action.label} quedó fuera de la tabla: la columna Acciones es inalcanzable',
+      );
+    }
+  }
 }
 
 /// Verifica que los botones de cada fila caigan dentro de la tabla.

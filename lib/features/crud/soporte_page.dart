@@ -195,14 +195,23 @@ class SoportePage extends StatelessWidget {
     final uid = SoporteModel.uidDe(row);
     if (uid.isEmpty) return;
 
+    // La respuesta viaja también dentro de `mensaje`, no solo como campo: la
+    // app lista las notificaciones con `titulo` + `mensaje`, así que si el
+    // texto quedara aparte el usuario vería "ya está la respuesta" sin poder
+    // leerla (todavía no hay pantalla de "mis reportes").
+    final respuesta = '${patch['respuesta'] ?? ''}'.trim();
+
     await NotificacionModel().add(<String, Object?>{
       'userUid': uid,
       'titulo': 'Respondimos tu reporte',
-      'mensaje': 'Ya está la respuesta a tu reporte de soporte. '
-          'Entrá a la app para verla.',
-      'respuesta': '${patch['respuesta'] ?? ''}',
+      'mensaje': respuesta.isEmpty
+          ? 'Ya está la respuesta a tu reporte de soporte.'
+          : 'Respuesta de soporte:\n\n$respuesta',
+      'respuesta': respuesta,
       'leido': false,
-      'fecha': FieldValue.serverTimestamp(),
+      // `createdAt` y no `fecha`: es el campo que lee la app para la fecha de
+      // la notificación.
+      'createdAt': FieldValue.serverTimestamp(),
       'tipo': 'soporte',
       'soporteId': '${row['id'] ?? ''}',
     });
