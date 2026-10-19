@@ -394,8 +394,21 @@ class _DoughnutState extends State<_Doughnut> {
   static const double _centerSpaceRadius = 46;
   static const double _sectionRadius = 26;
 
+  /// Alto reservado para el panel de info. Es fijo para que, al aparecer o
+  /// desaparecer, no corran ni el redondel ni la leyenda.
+  static const double _infoSlotHeight = 64;
+
   /// Índice del segmento bajo el cursor; `null` cuando no hay ninguno.
-  int? _touchedIndex;
+  ///
+  /// Es un `ValueNotifier` (y no `setState`) para que el hover reconstruya solo
+  /// el panel de info y el cursor, nunca el `PieChart`.
+  final ValueNotifier<int?> _hovered = ValueNotifier<int?>(null);
+
+  @override
+  void dispose() {
+    _hovered.dispose();
+    super.dispose();
+  }
 
   /// Detecta el segmento bajo el cursor replicando la geometría de fl_chart
   /// (`PieChartPainter.handleTouch`): las secciones arrancan en 0° (las 3 en
@@ -431,7 +444,7 @@ class _DoughnutState extends State<_Doughnut> {
         acc += sweep;
       }
     }
-    if (hit != _touchedIndex) setState(() => _touchedIndex = hit);
+    _hovered.value = hit;
   }
 
   @override
@@ -442,89 +455,100 @@ class _DoughnutState extends State<_Doughnut> {
 
     final palette = widget.palette;
     final total = entries.fold<int>(0, (sum, e) => sum + e.value);
-    final showTooltip = _touchedIndex != null && _touchedIndex! < entries.length;
+
+    // El gráfico se arma una sola vez por build y se pasa como `child` cacheado
+    // al `AnimatedBuilder`: al mover el mouse no se reconstruye ni se repinta.
+    final chart = LayoutBuilder(
+      builder: (context, chartConstraints) {
+        final size = chartConstraints.biggest;
+        return AnimatedBuilder(
+          animation: _hovered,
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2,
+              centerSpaceRadius: _centerSpaceRadius,
+              borderData: FlBorderData(show: false),
+              sections: [
+                for (var i = 0; i < entries.length; i++)
+                  PieChartSectionData(
+                    value: entries[i].value.toDouble(),
+                    color: palette[i % palette.length],
+                    radius: _sectionRadius,
+                    showTitle: false,
+                  ),
+              ],
+            ),
+          ),
+          builder: (context, child) => MouseRegion(
+            cursor: _hovered.value != null
+                ? SystemMouseCursors.click
+                : MouseCursor.defer,
+            onExit: (_) => _hovered.value = null,
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerHover: (e) =>
+                  _updateHover(e.localPosition, size, entries),
+              onPointerDown: (e) =>
+                  _updateHover(e.localPosition, size, entries),
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // En pantallas angostas la leyenda lateral se achica para dejarle lugar
+        // En pantallas angostas la columna lateral se achica para dejarle lugar
         // al redondel.
-        final legendWidth = constraints.maxWidth >= 480 ? 150.0 : 116.0;
+        final sideWidth = constraints.maxWidth >= 480 ? 150.0 : 116.0;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
+            // Izquierda: el redondel, a altura completa y sin recortes.
+            Expanded(child: chart),
+            const SizedBox(width: 12),
+            // Derecha: info del segmento (slot de alto fijo) + leyenda vertical.
+            SizedBox(
+              width: sideWidth,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, chartConstraints) {
-                        final size = chartConstraints.biggest;
-                        return MouseRegion(
-                          cursor: _touchedIndex != null
-                              ? SystemMouseCursors.click
-                              : MouseCursor.defer,
-                          onExit: (_) {
-                            if (_touchedIndex != null) {
-                              setState(() => _touchedIndex = null);
-                            }
-                          },
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerHover: (e) =>
-                                _updateHover(e.localPosition, size, entries),
-                            onPointerDown: (e) =>
-                                _updateHover(e.localPosition, size, entries),
-                            child: PieChart(
-                              PieChartData(
-                                sectionsSpace: 2,
-                                centerSpaceRadius: _centerSpaceRadius,
-                                borderData: FlBorderData(show: false),
-                                sections: [
-                                  for (var i = 0; i < entries.length; i++)
-                                    PieChartSectionData(
-                                      value: entries[i].value.toDouble(),
-                                      color: palette[i % palette.length],
-                                      radius: _sectionRadius,
-                                      showTitle: false,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
+                  // La info aparece y desaparece acá adentro sin mover nada.
+                  SizedBox(
+                    height: _infoSlotHeight,
+                    child: AnimatedBuilder(
+                      animation: _hovered,
+                      builder: (context, _) {
+                        final index = _hovered.value;
+                        if (index == null || index >= entries.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return _DoughnutInfo(
+                          swatch: palette[index % palette.length],
+                          title:
+                              '${widget.categoryLabel}: ${entries[index].key}',
+                          value: entries[index].value,
+                          total: total,
                         );
                       },
                     ),
                   ),
-                  if (showTooltip) ...[
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: _DoughnutInfo(
-                        swatch: palette[_touchedIndex! % palette.length],
-                        title:
-                            '${widget.categoryLabel}: ${entries[_touchedIndex!].key}',
-                        value: entries[_touchedIndex!].value,
-                        total: total,
+                  const SizedBox(height: 8),
+                  // Leyenda vertical: color + nombre, uno por fila.
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: _LegendRight(
+                        labels: <String>[for (final e in entries) e.key],
+                        colors: <Color>[
+                          for (var i = 0; i < entries.length; i++)
+                            palette[i % palette.length],
+                        ],
+                        textColor: p.textSecondary,
                       ),
                     ),
-                  ],
+                  ),
                 ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Leyenda vertical a la derecha: color + nombre, uno por fila.
-            SizedBox(
-              width: legendWidth,
-              child: SingleChildScrollView(
-                child: _LegendRight(
-                  labels: <String>[for (final e in entries) e.key],
-                  colors: <Color>[
-                    for (var i = 0; i < entries.length; i++)
-                      palette[i % palette.length],
-                  ],
-                  textColor: p.textSecondary,
-                ),
               ),
             ),
           ],
