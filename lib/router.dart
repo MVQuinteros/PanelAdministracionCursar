@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/admin/administradores_page.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_page.dart';
 import 'features/crud/avisos_page.dart';
@@ -43,6 +44,12 @@ const List<NavItem> kNavItems = <NavItem>[
     label: 'Usuarios',
     icon: Icons.people_alt_outlined,
     title: 'Cuentas de la app y roles de acceso',
+  ),
+  NavItem(
+    route: '/administradores',
+    label: 'Administradores',
+    icon: Icons.admin_panel_settings_outlined,
+    title: 'Quién puede entrar al panel',
   ),
   NavItem(
     route: '/ofertas',
@@ -120,6 +127,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/usuarios',
             builder: (context, state) => const UsuariosPage(),
+          ),
+          GoRoute(
+            path: '/administradores',
+            builder: (context, state) => const AdministradoresPage(),
           ),
           GoRoute(
             path: '/ofertas',
