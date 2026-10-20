@@ -8,6 +8,7 @@ import '../../core/widgets/banner.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/toast.dart';
+import '../auth/auth_controller.dart';
 import 'crud_form_dialog.dart';
 import 'crud_models.dart';
 import 'crud_prompt_dialog.dart';
@@ -42,6 +43,39 @@ class _CrudPageState extends ConsumerState<CrudPage> {
   /// Notifier vivo del módulo. Se resuelve siempre a través del provider para
   /// no duplicar la instancia (ni su estado) fuera del container.
   CrudController get _c => ref.read(_provider.notifier);
+
+  /// Email del admin que está operando, para la auditoría de estado.
+  ///
+  /// Sale del documento de la sesión (`adminDoc`) y, si no estuviera, de la
+  /// sesión de Firebase Auth. Mismo criterio que `AdministradoresPage`.
+  String get _adminEmail {
+    final auth = ref.read(authControllerProvider);
+    final email = '${auth.adminDoc?['email'] ?? ''}'.trim();
+    return email.isNotEmpty ? email : (auth.user?.email ?? '');
+  }
+
+  /// Suma la auditoría de estado al patch, si el módulo la declara.
+  ///
+  /// Va acá y no en el `CrudSpec` porque el spec es estático y no tiene sesión:
+  /// el `RowActionSpec` dice *qué* cambia (estado, motivo) y la página agrega
+  /// *quién* y *cuándo*.
+  Map<String, Object?> _conAdmin(Map<String, Object?> patch) {
+    if (!widget.spec.auditarEstado || !patch.containsKey('estado')) {
+      return patch;
+    }
+    return <String, Object?>{
+      ...patch,
+      'estadoPor': _adminEmail,
+      'estadoFecha': FieldValue.serverTimestamp(),
+      'historialEstados': FieldValue.arrayUnion(<Object?>[
+        <String, Object?>{
+          'estado': patch['estado'],
+          'motivo': patch['motivoRechazo'] ?? '',
+          'por': _adminEmail,
+        },
+      ]),
+    };
+  }
 
   @override
   void initState() {
@@ -152,7 +186,7 @@ class _CrudPageState extends ConsumerState<CrudPage> {
         onSubmit: (promptPatch) {
           return _savePatch(
             row,
-            <String, Object?>{...?spec.patch, ...promptPatch},
+            _conAdmin(<String, Object?>{...?spec.patch, ...promptPatch}),
             doneMessage: prompt.doneMessage ?? spec.doneMessage,
           );
         },
@@ -162,7 +196,7 @@ class _CrudPageState extends ConsumerState<CrudPage> {
 
     final patch = spec.patch;
     if (patch == null) return;
-    await _savePatch(row, patch, doneMessage: spec.doneMessage);
+    await _savePatch(row, _conAdmin(patch), doneMessage: spec.doneMessage);
   }
 
   /// Escribe [patch] sobre la fila y recarga el módulo.

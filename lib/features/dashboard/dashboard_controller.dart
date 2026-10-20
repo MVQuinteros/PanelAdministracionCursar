@@ -92,8 +92,11 @@ class DashboardData {
   int get institucionesPendientes =>
       instituciones.where((i) => i['estado'] == 'pendiente').length;
 
+  /// Cuenta las rechazadas explícitamente. Antes se restaban las aprobadas y
+  /// las pendientes del total, así que cualquier documento con un estado
+  /// inesperado (o sin estado) inflaba este número.
   int get institucionesRechazadas =>
-      instituciones.length - institucionesAprobadas - institucionesPendientes;
+      instituciones.where((i) => i['estado'] == 'rechazada').length;
 
   int get admins => usuarios.where((u) => u['rol'] == 'admin').length;
 

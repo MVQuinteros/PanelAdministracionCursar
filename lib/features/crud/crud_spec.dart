@@ -29,6 +29,7 @@ class CrudSpec {
     this.autoTimestamp = true,
     this.addValues = const <String, Object?>{},
     this.searchText,
+    this.auditarEstado = false,
   });
 
   /// Título del módulo; también se usa para el nombre del archivo CSV.
@@ -55,6 +56,11 @@ class CrudSpec {
 
   /// Texto usado por la búsqueda. Por defecto, el JSON de la fila.
   final String Function(Doc row)? searchText;
+
+  /// Agrega auditoría de estado a las acciones que lo cambian: `estadoPor`,
+  /// `estadoFecha` e `historialEstados`. Lo usa Instituciones (aprobar /
+  /// rechazar); el resto de los módulos no la necesita.
+  final bool auditarEstado;
 
   String get csvFilename =>
       title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
@@ -102,6 +108,8 @@ class FieldSpec {
     this.rows = 3,
     this.full = false,
     this.defaultValue,
+    this.pattern,
+    this.patternMessage,
   });
 
   final String name;
@@ -116,6 +124,17 @@ class FieldSpec {
   /// Ocupa todo el ancho del formulario (`field--full`).
   final bool full;
   final Object? defaultValue;
+
+  /// Regex que debe cumplir el valor (si no está vacío) para poder guardar.
+  ///
+  /// Se aplica además de [required]: un campo opcional con [pattern] acepta el
+  /// vacío, pero si se completa tiene que respetar el formato. En un select o
+  /// toggle no aplica.
+  final RegExp? pattern;
+
+  /// Mensaje de error cuando el valor no cumple [pattern]. Si es null, se usa
+  /// un texto genérico.
+  final String? patternMessage;
 }
 
 enum FieldType { text, email, number, date, textarea, select, datalist, toggle }

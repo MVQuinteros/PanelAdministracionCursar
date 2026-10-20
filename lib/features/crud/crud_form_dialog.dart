@@ -323,6 +323,12 @@ class _Field extends StatelessWidget {
     if (spec.required && (v == null || v.trim().isEmpty)) {
       return 'Campo obligatorio.';
     }
+    final value = v?.trim() ?? '';
+    // El patrón se aplica solo si hay algo escrito: un campo opcional que
+    // respeta el formato puede quedar vacío.
+    if (value.isNotEmpty && spec.pattern != null && !spec.pattern!.hasMatch(value)) {
+      return spec.patternMessage ?? 'El formato no es válido.';
+    }
     if (spec.type == FieldType.email &&
         v != null &&
         v.trim().isNotEmpty &&
@@ -529,6 +535,9 @@ class _Field extends StatelessWidget {
             TextFormField(
               controller: controller,
               validator: _validate,
+              autovalidateMode: spec.pattern != null
+                  ? AutovalidateMode.onUserInteraction
+                  : AutovalidateMode.disabled,
               keyboardType: switch (spec.type) {
                 FieldType.email => TextInputType.emailAddress,
                 FieldType.number => const TextInputType.numberWithOptions(

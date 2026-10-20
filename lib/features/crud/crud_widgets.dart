@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/cursar_palette.dart';
+import '../../core/utils/open_url.dart';
 
 /// Celdas de tabla reutilizables.
 ///
@@ -95,6 +96,68 @@ class ExternalLinkText extends StatelessWidget {
             fontSize: AppTokens.md,
             color: context.palette.accent,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Celda del identificador oficial (CUE / SPU / dependencia).
+///
+/// Si hay [url], el texto es un link que abre el registro oficial en otra
+/// pestaña (`SITRARED` para el CUE, el listado del SPU para universidades). Si
+/// no, se muestra como texto atenuado: la dependencia de una sede no verifica
+/// nada, solo informa.
+class VerifyLinkCell extends StatelessWidget {
+  const VerifyLinkCell({
+    super.key,
+    required this.label,
+    this.url,
+    this.esCodigo = false,
+  });
+
+  final String label;
+  final String? url;
+
+  /// `true` cuando [label] es un código (CUE): se muestra monoespaciado para
+  /// distinguirlo del nombre de una institución madre.
+  final bool esCodigo;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    if (url == null || url!.isEmpty) {
+      return MutedText(label);
+    }
+
+    return Tooltip(
+      message: 'Ver en el registro oficial',
+      child: InkWell(
+        onTap: () => openUrl(url!),
+        borderRadius: BorderRadius.circular(4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: AppTokens.md,
+                  fontWeight: esCodigo ? FontWeight.w600 : FontWeight.w500,
+                  fontFamily: esCodigo ? 'monospace' : null,
+                  letterSpacing: esCodigo ? 0.5 : 0,
+                  color: p.accent,
+                  decoration: TextDecoration.underline,
+                  decorationColor: p.accent.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+            const SizedBox(width: 5),
+            Icon(Icons.open_in_new, size: 13, color: p.accent),
+          ],
         ),
       ),
     );
