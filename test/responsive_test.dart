@@ -249,6 +249,33 @@ void main() {
 
       expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
     });
+
+    testWidgets('la tarjeta queda por encima del centro', (tester) async {
+      const size = Size(1280, 900);
+      await pumpLogin(tester, size);
+
+      final card = tester.getRect(find.byType(Card).first);
+      final centroY = size.height / 2;
+
+      // Si estuviera centrada de verdad, el medio de la tarjeta caería en el
+      // medio de la pantalla. Queremos confirmar que sube un poco (el
+      // `Alignment(0, -0.25)`).
+      expect(card.center.dy, lessThan(centroY));
+      // Pero sin irse arriba de todo: sigue siendo un encuadre centrado.
+      expect(card.center.dy, greaterThan(size.height * 0.25));
+      expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+    });
+  });
+
+  group('DeniedPage', () {
+    for (final entry in floatingViewports.entries) {
+      testWidgets('no desborda a ${entry.key}', (tester) async {
+        await pumpDenied(tester, entry.value);
+
+        expect(find.text('Acceso denegado'), findsOneWidget);
+        expect(layoutErrors, isEmpty, reason: layoutReason(layoutErrors));
+      });
+    }
   });
 }
 
@@ -300,6 +327,24 @@ Future<void> pumpLogin(WidgetTester tester, Size size) async {
   await settle(tester);
 }
 
+/// Monta la pantalla de acceso denegado con un estado `denied` falso.
+Future<void> pumpDenied(WidgetTester tester, Size size) async {
+  tester.view.devicePixelRatio = 1.0;
+  tester.view.physicalSize = size;
+  addTearDown(() => tester.view.reset());
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        authControllerProvider.overrideWith(_DeniedAuthController.new),
+      ],
+      child: MaterialApp(theme: AppTheme.light(), home: const DeniedPage()),
+    ),
+  );
+
+  await settle(tester);
+}
+
 Future<void> pumpForm(WidgetTester tester, Size size) async {
   await pumpLauncher(tester, size, (context) {
     return showDialog<void>(
@@ -317,6 +362,15 @@ Future<void> pumpForm(WidgetTester tester, Size size) async {
 class _FakeAuthController extends AuthController {
   @override
   AuthState build() => const AuthState(status: AuthStatus.unauthenticated);
+}
+
+/// Sesión iniciada pero sin rol admin: lo que muestra `DeniedPage`.
+class _DeniedAuthController extends AuthController {
+  @override
+  AuthState build() => const AuthState(
+        status: AuthStatus.denied,
+        user: null,
+      );
 }
 
 // ---------------------------------------------------------------------------

@@ -84,8 +84,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     return Scaffold(
       body: _AuthBackground(
-        child: SingleChildScrollView(
-          child: Center(
+        // Un poco por encima del centro (no el centro exacto): el ojo lo lee
+        // mejor. El `-0.25` es 25 % del espacio libre hacia arriba.
+        child: Align(
+          alignment: const Alignment(0, -0.25),
+          // El scroll va adentro del `Align`: cuando sobra alto la tarjeta
+          // queda centrada, y cuando falta (celular) se puede desplazar sin
+          // que el contenido se corte.
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
               child: Card(
@@ -358,7 +365,12 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-/// Fondo con los dos radial-gradient del `.auth-screen` del CSS.
+/// Fondo de las pantallas de acceso: la imagen a pantalla completa.
+///
+/// `BoxFit.cover` cubre todo el viewport (recorta lo que sobra según la
+/// relación de aspecto, que en un monitor ancho es a los costados y en un
+/// celular vertical a los lados). El color del panel queda debajo como
+/// respaldo mientras la imagen carga, así no se ve un destello blanco.
 class _AuthBackground extends StatelessWidget {
   const _AuthBackground({required this.child});
 
@@ -370,11 +382,12 @@ class _AuthBackground extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: p.bgMain,
-        gradient: RadialGradient(
-          center: const Alignment(-1, -1),
-          radius: 1.1,
-          colors: [p.accent.withValues(alpha: 0.13), Colors.transparent],
-          stops: const [0, 0.6],
+        // La imagen es clara en el centro: ahí cae la tarjeta blanca. Por ahora
+        // sin velo, para ver la foto tal cual.
+        image: const DecorationImage(
+          image: AssetImage('assets/fondoLogin.jpg'),
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
         ),
       ),
       child: child,
@@ -392,57 +405,68 @@ class DeniedPage extends ConsumerWidget {
     final email = ref.watch(authControllerProvider).user?.email ?? '';
 
     return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(30),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Acceso denegado',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: AppTokens.authTitle,
-                      fontWeight: FontWeight.w700,
-                      color: p.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text.rich(
-                    TextSpan(
-                      style: TextStyle(
-                        color: p.textSecondary,
-                        fontSize: AppTokens.md,
-                        height: 1.5,
+      body: _AuthBackground(
+        // Mismo encuadre que el login (un poco por encima del centro) y scroll
+        // adentro, para que el texto largo entre en un celular sin desbordar.
+        child: Align(
+          alignment: const Alignment(0, -0.25),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(30),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Acceso denegado',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: AppTokens.authTitle,
+                          fontWeight: FontWeight.w700,
+                          color: p.textPrimary,
+                        ),
                       ),
-                      children: [
-                        const TextSpan(text: 'La cuenta '),
+                      const SizedBox(height: 10),
+                      Text.rich(
                         TextSpan(
-                          text: email,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            color: p.textSecondary,
+                            fontSize: AppTokens.md,
+                            height: 1.5,
+                          ),
+                          children: [
+                            const TextSpan(text: 'La cuenta '),
+                            TextSpan(
+                              text: email,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const TextSpan(
+                              text: ' no tiene rol de administrador. El acceso '
+                                  'a este panel está limitado a cuentas con '
+                                  'rol: "admin".',
+                            ),
+                          ],
                         ),
-                        const TextSpan(
-                          text: ' no tiene rol de administrador. El acceso a '
-                              'este panel está limitado a cuentas con '
-                              'rol: "admin".',
-                        ),
-                      ],
-                    ),
-                    textAlign: TextAlign.center,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      AppButton(
+                        label: 'Cambiar de cuenta',
+                        tone: Tone.outline,
+                        block: true,
+                        onPressed: () => ref
+                            .read(authControllerProvider.notifier)
+                            .signOut(),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                  AppButton(
-                    label: 'Cambiar de cuenta',
-                    tone: Tone.outline,
-                    block: true,
-                    onPressed: () =>
-                        ref.read(authControllerProvider.notifier).signOut(),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
